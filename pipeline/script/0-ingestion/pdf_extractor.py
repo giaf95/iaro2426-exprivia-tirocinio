@@ -127,22 +127,16 @@ def start_dinamico():
         # Rimuove colonne duplicate
         df_finale = df_finale.loc[:, ~df_finale.columns.duplicated()]
 
-        # Configurazione colonne da pulire
-        COLONNE_DA_PULIRE = ["Portata Massima Mandata Standard","Prevalenza Massima Mandata 1","Portata Massima Ripresa Standard","Prevalenza Massima Ripresa FC1",
-                             "Aria esterna massima freecooling","Rapporto di temperatura minimo2","Portata massima aria esterna con η 1253/4 > 73%",
-                             "Potenza frigorifera netta 0% aria esterna3","Potenza assorbita 0% aria esterna3","Potenza termica 0% aria esterna4",
-                             "Potenza assorbita 0% aria esterna4","Potenza termica 0% aria esterna5","Potenza assorbita 0% aria esterna5",
-                             "Potenza recuperata minima dalla ruota 30% a.e.6","Potenza frigorifera totale macchina6","Potenza recuperata minima dalla ruota 30% a.e.7",
-                             "Potenza termica totale macchina7","Potenza recuperata minima dalla ruota 30% a.e.8","Potenza termica totale macchina8",
-                             "Efficienza stagionale in raffreddamento 9","Efficienza stagionale in riscaldamento 10","Potenza termica massima modulo gas",
-                             "Efficienza massima sul PCI","1 Prevalenza Massima Mandata","1 Prevalenza Massima Ripresa FC","2 Rapporto di temperatura minimo",
-                             "3 Potenza frigorifera netta 0% aria esterna","3 Potenza assorbita 0% aria esterna","4 Potenza termica 0% aria esterna",
-                             "5 Potenza termica 0% aria esterna","5 Potenza assorbita 0% aria esterna","6 Potenza recuperata minima dalla ruota 30% a.e.",
-                             "6 Potenza frigorifera totale macchina","7 Potenza recuperata minima dalla ruota 30% a.e.","7 Potenza termica totale macchina",
-                             "8 Potenza termica totale macchina","9 Efficienza stagionale in raffreddamento","10 Efficienza stagionale in riscaldamento",
-                             "Potenza massima assorbita M/FCS","Corrente massima assorbita M/FCS","Spunto massimo M/FCS"]
+        # --- AUTOMATIZZAZIONE PULIZIA ---
+        # Identifichiamo dinamicamente le colonne numeriche: 
+        # escludiamo i metadati e le colonne delle unità appena create
+        COLONNE_METADATI = ["Pagina_PDF", "Modello_Riferimento"]
+        COLONNE_DA_PULIRE = [
+            c for c in df_finale.columns 
+            if c not in COLONNE_METADATI and not str(c).endswith(" unit")
+        ]
 
-        print("\n--- Inizio Pulizia Numeri ---")
+        print("\n--- Inizio Pulizia Numeri (Automatica) ---")
         if COLONNE_DA_PULIRE:
             print("\n--- Analisi Righe Sporche ---")
             for col in COLONNE_DA_PULIRE:
