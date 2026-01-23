@@ -6,12 +6,15 @@ import pdfplumber
 
 def start_dinamico():
     """
-    Funzione principale per l'estrazione dati da PDF con mappatura unità da file ODS.
+    Funzione principale per l'estrazione dati da PDF con auto-mappatura delle unità scoperta dinamicamente.
     Include selezione file GUI, processamento tabelle, pulizia dati e export Excel.
     """
-    print("AVVIO ESTRAZIONE (Modalità Match Sicuro - ODS)...")
+    print("AVVIO ESTRAZIONE (Auto-Mappatura Unità attiva)...")
     
     # --- 1. CONFIGURAZIONE E INTERFACCIA UTENTE ---
+    # Definiamo le unità che lo script deve "imparare" a riconoscere nel PDF
+    UNITA_DA_CERCARE = ['m3/h', 'Pa', 'kW', '%']
+    
     root = tk.Tk()
     root.withdraw()
     root.attributes('-topmost', True)
@@ -21,41 +24,21 @@ def start_dinamico():
         title="SELEZIONA PDF", 
         filetypes=[("PDF", "*.pdf")]
     )
-    if not path_pdf: 
-        return
-
-    # Selezione file di mappatura
-    path_mappatura = filedialog.askopenfilename(
-        title="SELEZIONA mappaturaUnit.ods", 
-        filetypes=[("OpenDocument", "*.ods")]
-    )
     root.destroy() # Chiude l'istanza di tkinter
     
-    if not path_mappatura: 
-        return
-
-    # --- 2. CARICAMENTO MAPPATURA ---
-    try:
-        # Nota: Richiede 'odfpy' installato (pip install odfpy)
-        df_map = pd.read_excel(path_mappatura, engine='odf')
-        
-        # Creazione dizionario di mappatura {chiave_normalizzata: valore}
-        mappa_unita = {
-            str(k).strip().lower(): str(v).strip() 
-            for k, v in zip(df_map.iloc[:, 0], df_map.iloc[:, 1]) 
-            if pd.notna(k)
-        }
-        print(f"Mappatura caricata con successo ({len(mappa_unita)} termini).")
-        
-    except Exception as e:
-        print(f"Errore caricamento ODS: {e}")
-        print("Suggerimento: prova a scrivere nel terminale: pip install odfpy")
+    if not path_pdf: 
         return
 
     # Setup percorsi output
     cartella = os.path.dirname(path_pdf)
     nome_output = os.path.join(cartella, "CATALOGO_FINALE_UNITA.xlsx")
+    
+    # Dizionario che verrà popolato automaticamente leggendo il PDF
+    mappa_unita_automatica = {} 
     tutti_i_dati = []
+
+    # --- 2. CARICAMENTO MAPPATURA (AUTOMATICO) ---
+    # Rimossa la necessità di caricare il file ODS esterno
 
     # --- 3. PROCESSAMENTO PDF ---
     with pdfplumber.open(path_pdf) as pdf:
@@ -66,6 +49,19 @@ def start_dinamico():
                 if not tabella or len(tabella) < 2: 
                     continue
                 
+                # --- AUTO-SCOPERTA DELLE UNITA' ---
+                # Scansioniamo la tabella per vedere se ci sono righe che dichiarano unità
+                for riga_raw in tabella:
+                    # Puliamo l'etichetta (prima colonna)
+                    etichetta_clean = str(riga_raw[0]).replace('\n', ' ').strip().lower()
+                    if etichetta_clean and etichetta_clean != "nan":
+                        # Cerchiamo se in quella riga è presente un'unità nota
+                        for cella in riga_raw:
+                            val_unit = str(cella).strip()
+                            if val_unit in UNITA_DA_CERCARE:
+                                # Se la troviamo, mappiamo il nome della riga a quell'unità
+                                mappa_unita_automatica[etichetta_clean] = val_unit
+
                 # Creazione DataFrame temporaneo e pulizia base
                 df_temp = pd.DataFrame(tabella).replace('\n', ' ', regex=True)
                 df_temp = df_temp.replace(['', None], pd.NA)
@@ -83,7 +79,7 @@ def start_dinamico():
                 df_temp = df_temp.drop_duplicates(subset=[0]).set_index(0).T
                 df_temp["Pagina_PDF"] = i + 1
                 
-                # Conversione in dizionario per applicare la mappatura
+                # Conversione in dizionario per applicare la mappatura scoperta
                 records = df_temp.to_dict(orient='records')
 
                 for record in records:
@@ -91,9 +87,9 @@ def start_dinamico():
                     for col_nome, valore in record.items():
                         col_clean = str(col_nome).strip().lower()
                         
-                        # Controllo se la colonna esiste nella mappatura
-                        if col_clean in mappa_unita:
-                            nuove_unita[f"{col_nome} unit"] = mappa_unita[col_clean]
+                        # Controllo se la colonna esiste nella mappatura creata dinamicamente
+                        if col_clean in mappa_unita_automatica:
+                            nuove_unita[f"{col_nome} unit"] = mappa_unita_automatica[col_clean]
                     
                     if nuove_unita:
                         record.update(nuove_unita)
