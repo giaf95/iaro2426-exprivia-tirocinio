@@ -13,7 +13,7 @@ def start_dinamico():
     
     # --- 1. CONFIGURAZIONE E INTERFACCIA UTENTE ---
     # Definiamo le unità che lo script deve "imparare" a riconoscere nel PDF
-    UNITA_DA_CERCARE = ['m3/h', 'Pa', 'kW', '%']
+    UNITA_DA_CERCARE = ['m3/h', 'Pa', 'kW', '%', 'A']
     
     root = tk.Tk()
     root.withdraw()
