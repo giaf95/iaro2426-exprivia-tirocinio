@@ -159,19 +159,30 @@ def start_dinamico():
 
         print("\n--- Inizio Pulizia Numeri (Automatica) ---")
         if COLONNE_DA_PULIRE:
-            print("\n--- Analisi Righe Sporche ---")
             for col in COLONNE_DA_PULIRE:
-                if col in df_finale.columns:
-                    n_prima = len(df_finale)
-                    
-                    # Filtro: tieni solo righe valide
-                    df_finale = df_finale[df_finale[col].apply(riga_valida)]
+                # 1. Sicurezza: la colonna esiste?
+                if col not in df_finale.columns:
+                    continue
+                
+                # 2. Salta colonne puramente testuali (es. se tutti i valori sono A, B, C)
+                campione = df_finale[col].dropna().head(10).apply(riga_valida)
+                if not campione.any(): 
+                    continue 
+
+                n_prima = len(df_finale)
+                
+                # Filtro: tieni solo righe valide
+                df_temp_filter = df_finale[df_finale[col].apply(riga_valida)]
+                
+                # 3. Aggiorna df_finale solo se il filtro non lo svuota completamente
+                if not df_temp_filter.empty:
+                    df_finale = df_temp_filter
                     n_dopo = len(df_finale)
-                    
                     if n_prima - n_dopo > 0:
-                        print(f"Colonna '{col}': eliminate {n_prima - n_dopo} righe contenenti testo.")
-                    
-                    # Pulizia formale dei valori rimasti
+                        print(f"Colonna '{col}': rimosse {n_prima - n_dopo} righe sporche.")
+                
+                # 4. Pulizia finale del valore (solo se la colonna esiste ancora)
+                if col in df_finale.columns:
                     df_finale[col] = df_finale[col].apply(mantieni_solo_numeri)
         
         print("--- Fine Analisi ---\n")
