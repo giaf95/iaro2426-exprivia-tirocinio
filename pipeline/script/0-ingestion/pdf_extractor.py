@@ -37,6 +37,24 @@ def start_dinamico():
     mappa_unita_automatica = {} 
     tutti_i_dati = []
 
+    def riga_valida(valore):
+        if pd.isna(valore) or str(valore).strip() == "":
+            return True 
+        try:
+            float(str(valore).replace(',', '.'))
+            return True 
+        except ValueError:
+            return False 
+
+    def mantieni_solo_numeri(valore):
+        if pd.isna(valore): return pd.NA
+        s_val = str(valore).strip()
+        try:
+            float(s_val.replace(',', '.'))
+            return s_val
+        except ValueError:
+            return pd.NA
+        
     # --- 2. CARICAMENTO MAPPATURA (AUTOMATICO) ---
     # Rimossa la necessità di caricare il file ODS esterno
 
@@ -109,32 +127,7 @@ def start_dinamico():
                         record.update(nuove_unita)
                 
                 tutti_i_dati.extend(records)
-
-    # --- DEFINIZIONE FUNZIONI DI PULIZIA ---
-    def mantieni_solo_numeri(valore):
-        """Tenta di convertire il valore in float, altrimenti restituisce NA."""
-        if pd.isna(valore): return pd.NA
-        s_val = str(valore).strip()
-        try:
-            # Gestisce sia punto che virgola come separatori decimali
-            float(s_val.replace(',', '.'))
-            return s_val
-        except ValueError:
-            return pd.NA
-
-    def riga_valida(valore):
-        """
-        True: Valore numerico o vuoto (mantiene la riga).
-        False: Testo rilevato (es. 'KG'), elimina la riga.
-        """
-        if pd.isna(valore) or str(valore).strip() == "":
-            return True 
-        try:
-            float(str(valore).replace(',', '.'))
-            return True 
-        except ValueError:
-            return False 
-
+                
     # --- 4. CREAZIONE EXCEL FINALE ---
     if tutti_i_dati:
         df_finale = pd.DataFrame(tutti_i_dati)
