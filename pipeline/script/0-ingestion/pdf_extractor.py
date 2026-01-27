@@ -124,9 +124,16 @@ def start_dinamico():
     # --- 4. CREAZIONE EXCEL FINALE ---
     if tutti_i_dati:
         df_finale = pd.DataFrame(tutti_i_dati)
-        # Rimuove colonne duplicate
-        df_finale = df_finale.loc[:, ~df_finale.columns.duplicated()]
+        
+        # --- OTTIMIZZAZIONE: RIMOZIONE COLONNE VUOTE ---
+        # Rimuove colonne che hanno TUTTI i valori NaN
+        df_finale = df_finale.dropna(axis=1, how='all')
+        # Rimuove colonne che hanno solo stringhe vuote o spazi (opzionale ma consigliato)
+        df_finale = df_finale.loc[:, (df_finale.astype(str).replace(['nan', 'None', ''], pd.NA).dropna(how='all', axis=1).columns)]
 
+        # Rimuove eventuali duplicati di colonna rimasti
+        df_finale = df_finale.loc[:, ~df_finale.columns.duplicated()]
+        
         # --- AUTOMATIZZAZIONE PULIZIA ---
         # Identifichiamo dinamicamente le colonne numeriche: 
         # escludiamo i metadati e le colonne delle unità appena create
