@@ -49,19 +49,33 @@ def start_dinamico():
                 if not tabella or len(tabella) < 2: 
                     continue
                 
-                # --- AUTO-SCOPERTA DELLE UNITA' ---
-                # Scansioniamo la tabella per vedere se ci sono righe che dichiarano unità
+                # --- AUTO-SCOPERTA DELLE UNITA' (LOGICA DI COERENZA) ---
                 for riga_raw in tabella:
-                    # Puliamo l'etichetta (prima colonna)
+                    if not riga_raw or len(riga_raw) < 2: 
+                        continue
+                    
                     etichetta_clean = str(riga_raw[0]).replace('\n', ' ').strip().lower()
                     if etichetta_clean and etichetta_clean != "nan":
-                        # Cerchiamo se in quella riga è presente un'unità nota
-                        for cella in riga_raw:
-                            val_unit = str(cella).strip()
-                            if val_unit in UNITA_DA_CERCARE:
-                                # Se la troviamo, mappiamo il nome della riga a quell'unità
-                                mappa_unita_automatica[etichetta_clean] = val_unit
-
+                        # Valori della riga (esclusa l'etichetta)
+                        valori_dati = [str(c).strip() for c in riga_raw[1:] if c and str(c).strip() != ""]
+                        
+                        for val_unit in valori_dati:
+                            val_unit_clean = val_unit.strip('()[]{}')
+                            
+                            if val_unit_clean in UNITA_DA_CERCARE:
+                                # Verifica: la riga è un'unità solo se TUTTI gli altri valori 
+                                # non vuoti sono o la stessa unità o numeri.
+                                riga_coerente = True
+                                for v in valori_dati:
+                                    v_c = v.strip('()[]{}')
+                                    if v_c != val_unit_clean and not riga_valida(v_c):
+                                        riga_coerente = False
+                                        break
+                                
+                                if riga_coerente:
+                                    mappa_unita_automatica[etichetta_clean] = val_unit_clean
+                                    break
+                                
                 # Creazione DataFrame temporaneo e pulizia base
                 df_temp = pd.DataFrame(tabella).replace('\n', ' ', regex=True)
                 df_temp = df_temp.replace(['', None], pd.NA)
