@@ -6,11 +6,13 @@ from langchain_core.documents import Document
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
+# legge excel e trasforma ogni riga in documento strutturato
 class CatalogoToDocuments:
     def __init__(self, df):
         self.df = df
         self.documents = []
     
+    # estrae parametri e unita da una riga
     def _extract_parametri(self, row):
         parametri = {}
         for col in self.df.columns:
@@ -24,6 +26,7 @@ class CatalogoToDocuments:
                     parametri[col] = {"valore": valore, "unita": str(unita).strip()}
         return parametri
     
+    # formatta parametri in stringa leggibile
     def _create_description(self, parametri):
         parts = []
         for nome, data in parametri.items():
@@ -31,6 +34,7 @@ class CatalogoToDocuments:
             parts.append(f"{nome_clean}: {data['valore']} {data['unita']}")
         return " | ".join(parts)
     
+    # itera su ogni riga e crea un documento langchain
     def transform(self):
         for idx, row in self.df.iterrows():
             modello_id = row.get("Modello_Riferimento", f"MOD_{idx}")
@@ -54,6 +58,7 @@ class CatalogoToDocuments:
             self.documents.append(doc)
         return self.documents
 
+# prova piu modelli di embedding finche uno non funziona
 def load_embeddings():
     models = ["all-MiniLM-L6-v2", "all-mpnet-base-v2"]
     for model in models:
@@ -69,12 +74,14 @@ def load_embeddings():
         except:
             continue
     
+    # fallback se nessun modello specifico funziona
     embeddings = HuggingFaceEmbeddings(
         show_progress=False,
         model_kwargs={"trust_remote_code": True}
     )
     return embeddings
 
+# crea il vector store e lo salva in disco
 def create_vectorstore(documents, embeddings, persist_dir="./chroma_db"):
     print(f"embedding {len(documents)} documenti...")
     Path(persist_dir).mkdir(exist_ok=True)
@@ -89,6 +96,7 @@ def create_vectorstore(documents, embeddings, persist_dir="./chroma_db"):
     print(f"salvato in {persist_dir}")
     return vectorstore
 
+# fa una ricerca semantica nel vector store
 def test_search(vectorstore, query, k=2):
     print(f"\nquery: {query}")
     results = vectorstore.similarity_search(query, k=k)
@@ -130,6 +138,7 @@ if __name__ == "__main__":
         test_search(vectorstore, "bassa potenza", k=2)
         test_search(vectorstore, "freecooling", k=2)
         
+        # salva metadata per tracciamento
         metadata = {
             "num_documents": len(documents),
             "num_columns": len(df.columns),
