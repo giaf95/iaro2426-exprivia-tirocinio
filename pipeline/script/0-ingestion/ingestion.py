@@ -16,7 +16,7 @@ class CatalogoToDocuments:
     def _extract_parametri(self, row):
         parametri = {}
         for col in self.df.columns:
-            if col.endswith(" unit") or col in ["Pagina_PDF", "Modello_Riferimento"]:
+            if col.endswith(" unit") or col in ["Pagina_PDF", "Modello PAL"]:
                 continue
             unit_col = f"{col} unit"
             if unit_col in self.df.columns:
@@ -58,27 +58,15 @@ class CatalogoToDocuments:
             self.documents.append(doc)
         return self.documents
 
-# prova piu modelli di embedding finche uno non funziona
+# carica modello di embedding HuggingFace
 def load_embeddings():
-    models = ["all-MiniLM-L6-v2", "all-mpnet-base-v2"]
-    for model in models:
-        try:
-            print(f"caricamento {model}...")
-            embeddings = HuggingFaceEmbeddings(
-                model_name=model,
-                show_progress=False,
-                model_kwargs={"trust_remote_code": True}
-            )
-            print(f"ok: {model}")
-            return embeddings
-        except:
-            continue
-    
-    # fallback se nessun modello specifico funziona
+    print("caricamento all-MiniLM-L6-v2...")
     embeddings = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2",
         show_progress=False,
         model_kwargs={"trust_remote_code": True}
     )
+    print("ok: all-MiniLM-L6-v2")
     return embeddings
 
 # crea il vector store e lo salva in disco
