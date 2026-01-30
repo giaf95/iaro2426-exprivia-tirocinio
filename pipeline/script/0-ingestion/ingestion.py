@@ -37,7 +37,7 @@ class CatalogoToDocuments:
     # itera su ogni riga e crea un documento langchain
     def transform(self):
         for idx, row in self.df.iterrows():
-            modello_id = row.get("Modello_Riferimento", f"MOD_{idx}")
+            modello_id = row.get("Modello PAL", f"MOD_{idx}")
             pagina = row.get("Pagina_PDF", 1)
             parametri = self._extract_parametri(row)
             descrizione = self._create_description(parametri)
