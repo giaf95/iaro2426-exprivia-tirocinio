@@ -36,7 +36,7 @@ def router_node(state: AgentState):
 # Nodo per il recupero dei documenti dal database
 def retrieve_node(state: AgentState):
     target = state['target_kb']
-    k_results = 5 if target == "confronto" else 3
+    k_results = 10 if target == "confronto" else 6
     docs = vector_tecnico.similarity_search(state['query'], k=k_results)
     
     # Includiamo i metadati (ID modello e Pagina) nel contesto per l'LLM
