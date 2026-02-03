@@ -15,7 +15,7 @@ class AgentState(TypedDict):
 
 # Configurazione LLM e database vettoriale
 embeddings = load_embeddings()
-llm = OllamaLLM(model="llama3")
+llm = OllamaLLM(model="llama3", temperature=0) # Temperature 0 aumenta la precisione tecnica
 
 vector_tecnico = Chroma(
     persist_directory="./chroma_db", 
@@ -39,13 +39,33 @@ def retrieve_node(state: AgentState):
     k_results = 5 if target == "confronto" else 3
     docs = vector_tecnico.similarity_search(state['query'], k=k_results)
     
-    return {"context": [d.page_content for d in docs]}
+    # Includiamo i metadati (ID modello e Pagina) nel contesto per l'LLM
+    context_enhanced = []
+    for d in docs:
+        m_id = d.metadata.get('modello_id', 'N/D')
+        pag = d.metadata.get('pagina', 'N/D')
+        content = f"[MODELLO: {m_id} | PAGINA PDF: {pag}] Dati: {d.page_content}"
+        context_enhanced.append(content)
+    
+    return {"context": context_enhanced}
 
 # Nodo per la generazione della risposta finale
 def generator_node(state: AgentState):
     target = state['target_kb']
     contesto_str = "\n---\n".join(state['context'])
-    prompt_base = f"Sei un assistente tecnico HVAC esperto. Dati disponibili:\n{contesto_str}\n\n"
+    
+    # Prompt più rigido per evitare confusione tra unità di misura
+    prompt_base = f"""Sei un assistente tecnico HVAC. USA SOLO i dati forniti per rispondere.
+REGOLE DI RISPOSTA:
+1. Sii matematicamente preciso: se chiedono una portata > 40 m3/h, verifica solo quel valore.
+2. NON confondere m3/h (Portata) con kW (Potenza) o A (Corrente).
+3. Cita sempre il [MODELLO ID] e la [PAGINA PDF] per ogni informazione fornita.
+4. Se i dati non permettono un confronto diretto, ammettilo chiaramente.
+
+DATI TECNICI DISPONIBILI:
+{contesto_str}
+
+"""
     
     if target == "confronto":
         prompt = prompt_base + f"Analizza e confronta i modelli trovati per rispondere a: {state['query']}. Evidenzia le correlazioni nelle prestazioni."
