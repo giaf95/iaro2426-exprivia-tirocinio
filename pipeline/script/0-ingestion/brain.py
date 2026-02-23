@@ -135,6 +135,13 @@ def call_model(state: AgentState):
     print("\nL'intelligenza artificiale sta analizzando i dati e generando la risposta...")
     messages = state["messages"]
     response = llm_with_tools.invoke(messages)
+    
+    # debug
+    if response.tool_calls:
+        tool_name = response.tool_calls[0].get('name', 'Sconosciuto')
+        tool_args = response.tool_calls[0].get('args', {})
+        print(f"[DEBUG LLM] Tentativo di chiamata al tool '{tool_name}' con argomenti: {tool_args}")
+    
     return {"messages": [response]}
 
 tool_node = ToolNode(tools)
@@ -172,6 +179,7 @@ if __name__ == "__main__":
             break
             
         initial_state = {"messages": [istruzioni_di_sistema, HumanMessage(content=user_input)]}
-        result = app.invoke(initial_state)
+        # aggiunto limite di ricorsione per bloccare i loop infiniti
+        result = app.invoke(initial_state, {"recursion_limit": 10})
         
         print(f"\nAssistente: {result['messages'][-1].content}")
