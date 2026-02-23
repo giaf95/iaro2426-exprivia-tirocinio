@@ -77,7 +77,7 @@ def cerca_catalogo(query: str) -> str:
     if not db_catalogo:
         return "Errore: Database catalogo non caricato."
     
-    docs = db_catalogo.similarity_search(query, k=5)
+    docs = db_catalogo.similarity_search(query, k=8)
     
     if not docs:
         print("[TOOL] Nessun documento estratto.")
@@ -103,7 +103,7 @@ def cerca_sito_web(query: str) -> str:
     if not db_web:
         return "Errore: Database sito non caricato."
         
-    docs = db_web.similarity_search(query, k=5)
+    docs = db_web.similarity_search(query, k=2)
     testo_finale = "\n".join([d.page_content for d in docs])
     print(f"[TOOL] Estratti {len(docs)} documenti.")
     return testo_finale
@@ -119,7 +119,7 @@ def cerca_manuali(query: str) -> str:
     if not db_manuali:
         return "Errore: Database manuali non caricato."
         
-    docs = db_manuali.similarity_search(query, k=5)
+    docs = db_manuali.similarity_search(query, k=2)
     testo_finale = "\n".join([d.page_content for d in docs])
     print(f"[TOOL] Estratti {len(docs)} documenti.")
     return testo_finale
@@ -161,9 +161,10 @@ if __name__ == "__main__":
     print("\nChatbot Tool-Based avviato. Scrivi 'esci' per terminare.")
     
     istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico preciso e diretto. 
-    Quando ti vengono forniti dati da un catalogo, rispondi ESATTAMENTE alla domanda dell'utente. 
+    REGOLA FONDAMENTALE: Quando ricevi i dati estratti dal catalogo, controlla sempre il prefisso [Modello: X]. Se X non corrisponde esattamente al modello richiesto dall'utente, DEVI IGNORARE QUELLA RIGA.
+    Non confondere i valori tra modelli simili. 
     Se l'utente chiede 'qual è il maggiore', confronta i dati estratti e scrivi solo il risultato vincente. 
-    NON fare MAI lunghi elenchi riassuntivi a meno che l'utente non ti chieda esplicitamente 'elencami tutti i modelli'.""")
+    Rispondi in modo telegrafico. NON fare MAI lunghi elenchi riassuntivi a meno che l'utente non ti chieda esplicitamente 'elencami tutti i modelli'.""")
     
     while True:
         user_input = input("\nUtente: ")
