@@ -76,19 +76,21 @@ def cerca_catalogo(query: str) -> str:
     if not db_catalogo:
         return "Errore: Database catalogo non caricato."
     
-    docs = db_catalogo.similarity_search(query, k=8)
+    docs = db_catalogo.similarity_search(query, k=15)
     
     if not docs:
         print("[TOOL] Nessun documento estratto.")
         return "Nessun dato trovato nel catalogo."
     
     risultati = []
+    modelli_trovati = []
     for d in docs:
         modello = d.metadata.get('modello_id', 'N/D')
         risultati.append(f"[Modello: {modello}] {d.page_content}")
+        modelli_trovati.append(modello)
     
     testo_finale = "\n".join(risultati)
-    print(f"[TOOL] Estratti {len(docs)} documenti.")
+    print(f"[TOOL] Estratti {len(docs)} documenti. Modelli passati all'LLM: {modelli_trovati}")
     return testo_finale
 
 @tool
