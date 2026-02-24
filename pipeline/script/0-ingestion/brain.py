@@ -68,9 +68,8 @@ db_manuali = select_and_load_db("manuali", embeddings_model)
 
 @tool
 def cerca_catalogo(query: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE per cercare dati tecnici, valori numerici e specifiche di targa dei prodotti (es. portata, potenza, dimensioni, peso, voltaggio).
-    QUANDO NON USARLO: Non usarlo per cercare istruzioni di montaggio, guide all'uso o informazioni sull'azienda.
-    ISTRUZIONI PER LA QUERY: Inserisci nella query solo il nome della famiglia/modello e il parametro esatto richiesto dall'utente. Non inventare codici e non includere parti della domanda originale."""
+    """Usa questo tool ESCLUSIVAMENTE per cercare dati tecnici, valori numerici e specifiche di targa dei prodotti (es. portata, potenza, dimensioni).
+    REGOLA FERREA: Devi generare un UNICO parametro stringa chiamato 'query'. Questa singola stringa deve contenere sia il modello che il parametro (esempio: '061-035 portata massima'). NON separare i valori in più argomenti."""
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO")
     print(f"[TOOL] Query in ingresso: '{query}'")
     
@@ -94,10 +93,8 @@ def cerca_catalogo(query: str) -> str:
 
 @tool
 def cerca_sito_web(query: str) -> str:
-    """Usa questo tool per cercare procedure passo-passo, guide all'installazione, risoluzione dei problemi (troubleshooting), codici di errore, manutenzione e istruzioni di funzionamento.
-    QUANDO NON USARLO: Non usarlo per cercare specifiche tecniche numeriche o presentazioni commerciali.
-    ISTRUZIONI PER LA QUERY: Estrai le parole chiave relative all'azione o al problema (es. 'installazione valvola', 'errore E01', 'procedura pulizia filtro')."""
-    print(f"\n[TOOL] Esecuzione CERCA_SITO_WEB")
+    """Usa questo tool per cercare procedure passo-passo, guide all'installazione, troubleshooting e codici di errore.
+    REGOLA FERREA: Usa un UNICO parametro stringa chiamato 'query' contenente le parole chiave del problema (esempio: 'installazione valvola' o 'errore E01')."""
     print(f"[TOOL] Query in ingresso: '{query}'")
     
     if not db_web:
@@ -110,9 +107,8 @@ def cerca_sito_web(query: str) -> str:
 
 @tool
 def cerca_manuali(query: str) -> str:
-    """Usa questo tool per trovare informazioni commerciali, descrizioni generali dell'azienda, contatti, policy, o panoramiche ad alto livello sui prodotti e servizi offerti.
-    QUANDO NON USARLO: Non usarlo per risolvere guasti o per cercare dati tecnici specifici.
-    ISTRUZIONI PER LA QUERY: Usa concetti generici come 'chi siamo', 'contatti', 'visione aziendale' o 'descrizione prodotto X'."""
+    """Usa questo tool per trovare informazioni commerciali, descrizioni generali dell'azienda o contatti.
+    REGOLA FERREA: Usa un UNICO parametro stringa chiamato 'query' con concetti generici (esempio: 'chi siamo' o 'contatti')."""
     print(f"\n[TOOL] Esecuzione CERCA_MANUALI")
     print(f"[TOOL] Query in ingresso: '{query}'")
     
