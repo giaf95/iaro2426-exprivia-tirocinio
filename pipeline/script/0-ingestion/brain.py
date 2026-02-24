@@ -67,16 +67,24 @@ db_manuali = select_and_load_db("manuali", embeddings_model)
 # definizione dei tool
 
 @tool
-def cerca_catalogo(query: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE per cercare dati tecnici, valori numerici e specifiche di targa dei prodotti (es. portata, potenza, dimensioni).
-    REGOLA FERREA: Devi generare un UNICO parametro stringa chiamato 'query'. Questa singola stringa deve contenere sia il modello che il parametro (esempio: '061-035 portata massima'). NON separare i valori in più argomenti."""
+def cerca_catalogo(codice_modello: str, parametro_richiesto: str) -> str:
+    """Usa questo tool ESCLUSIVAMENTE per cercare dati tecnici e specifiche di targa dei prodotti.
+    ISTRUZIONI OBBLIGATORIE - Devi dividere la ricerca in DUE argomenti:
+    1. 'codice_modello': estrai SOLO il codice numerico del modello (es. '061-035'). Se la domanda è generica e non specifica un modello, scrivi la parola 'NESSUNO'.
+    2. 'parametro_richiesto': la grandezza fisica da cercare (es. 'portata massima mandata standard')."""
+    
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO")
-    print(f"[TOOL] Query in ingresso: '{query}'")
+    print(f"[TOOL] Ricerca chirurgica -> Modello: '{codice_modello}' | Parametro: '{parametro_richiesto}'")
     
     if not db_catalogo:
         return "Errore: Database catalogo non caricato."
     
-    docs = db_catalogo.similarity_search(query, k=15)
+    codice_pulito = codice_modello.lower().replace("modello", "").strip()
+    
+    if codice_pulito != "nessuno":
+        docs = db_catalogo.similarity_search(parametro_richiesto, k=3, filter={"modello_id": codice_pulito})
+    else:
+        docs = db_catalogo.similarity_search(parametro_richiesto, k=8)
     
     if not docs:
         print("[TOOL] Nessun documento estratto.")
