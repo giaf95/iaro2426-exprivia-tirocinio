@@ -113,6 +113,12 @@ if __name__ == "__main__":
         transformer = CatalogoToDocuments(df)
         documents = transformer.transform()
         print(f"ok: {len(documents)} documenti\n")
+
+        print("\nDEBUG: ISPEZIONE DEL PRIMO DOCUMENTO")
+        print("1. PAGE CONTENT (Questo è il testo che viene embeddato per la ricerca semantica):")
+        print(documents[0].page_content)
+        print("\n2. METADATI (Questi sono i campi esatti che il tuo router può filtrare logicamente):")
+        print(json.dumps(documents[0].metadata, indent=2))
         
         print("setup embedding...")
         embeddings = load_embeddings()
