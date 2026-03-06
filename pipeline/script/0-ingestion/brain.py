@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import tkinter as tk
+import pandas as pd
 from tkinter import filedialog
 from typing import Annotated, List, TypedDict
 import operator
@@ -90,22 +91,30 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
     return "\n".join(risultati)
 
 @tool
-def cerca_catalogo_generico(parametro_richiesto: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE per domande generiche sul catalogo, confronti, o per trovare 'i migliori', 'i maggiori', 'i primi 3' (es. 'quali modelli hanno la portata più alta?').
-    QUANDO NON USARLO: Non usarlo se l'utente ha fornito un codice modello specifico o se cerca campi di applicazione.
-    ISTRUZIONI: Usa un UNICO parametro stringa con la grandezza fisica da cercare (es. 'Portata Massima Ripresa')."""
-    print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_GENERICO")
-    print(f"[TOOL] Ricerca a strascico -> Parametro: '{parametro_richiesto}'")
+def analizza_top_catalogo(parametro_richiesto: str, top_n: int = 3) -> str:
+    """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo, come trovare classifiche, i valori massimi, minimi o "i top 3".
+    QUANDO NON USARLO: Non usarlo per cercare testo o descrizioni.
+    PARAMETRI:
+    - 'parametro_richiesto': la grandezza fisica da cercare.
+    - 'top_n': il numero di modelli da restituire."""
+    print(f"\n[TOOL] Esecuzione ANALIZZA_TOP_CATALOGO")
+    print(f"[TOOL] Estrazione dati strutturati -> Parametro: '{parametro_richiesto}', Top: {top_n}")
     
-    if not db_catalogo:
-        return "Errore: Database catalogo non caricato."
+    try:
+        df = pd.read_excel(r"pipeline/data/1-preprocessing/catalogo.xlsx")
+    except Exception as e:
+        return f"Errore durante la lettura del file Excel: {e}"
+        
+    if parametro_richiesto not in df.columns:
+        return f"Il parametro '{parametro_richiesto}' non esiste. Colonne disponibili: {', '.join(df.columns)}"
+        
+    df[parametro_richiesto] = pd.to_numeric(df[parametro_richiesto], errors='coerce')
+    risultato = df.dropna(subset=[parametro_richiesto]).sort_values(by=parametro_richiesto, ascending=False).head(top_n)
     
-    # K molto alto per pescare quanti più modelli possibili da far confrontare all'LLM
-    docs = db_catalogo.similarity_search(parametro_richiesto, k=10)
+    colonne_output = ['Modello', parametro_richiesto]
+    colonne_esistenti = [col for col in colonne_output if col in df.columns]
     
-    risultati = [f"[Modello: {d.metadata.get('modello_id', 'N/D')}] {d.page_content}" for d in docs]
-    print(f"[TOOL] Estratti {len(docs)} documenti da far confrontare all'LLM.")
-    return "\n".join(risultati)
+    return risultato[colonne_esistenti].to_string(index=False)
 
 @tool
 def cerca_sito_web(query: str) -> str:
@@ -141,7 +150,7 @@ tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerc
 
 # configurazione LangGraph e LLM
 
-llm = ChatOllama(model="llama3.1", temperature=0)
+llm = ChatOllama(model="qwen2.5:3b", temperature=0)
 llm_with_tools = llm.bind_tools(tools)
 
 def call_model(state: AgentState):
@@ -180,9 +189,10 @@ app = workflow.compile()
 if __name__ == "__main__":
     print("\nChatbot Tool-Based avviato. Scrivi 'esci' per terminare.")
     
-    istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico preciso e analitico. 
-    REGOLA 1 (ANTI-ALLUCINAZIONE): Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Se l'informazione non c'è, scrivi: "L'informazione non è presente nei documenti forniti."
-    REGOLA 2 (CLASSIFICHE): Se l'utente chiede i "top 3" o il "maggiore", analizza i valori numerici presenti nel testo che hai ricevuto, trova i più alti e rispondi indicando i modelli corrispondenti. Sii conciso.""")
+    istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico di prevendita preciso e analitico.
+    REGOLA 1: Usa sempre gli strumenti a tua disposizione prima di rispondere.
+    REGOLA 2 (ANTI-ALLUCINAZIONE): Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Non generare testo basato sulle tue conoscenze interne. Se le informazioni fornite dai tool contengono errori o dicono "non trovato", rispondi all'utente che non hai a disposizione quei dati nel catalogo.
+    REGOLA 3: Per classifiche e valori massimi, usa sempre 'analizza_top_catalogo' e riporta i numeri esatti che ti restituisce.""")
     
     while True:
         user_input = input("\nUtente: ")
