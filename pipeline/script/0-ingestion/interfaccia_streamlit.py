@@ -4,8 +4,8 @@ from PIL import Image, ImageDraw
 import os
 
 # --- CONFIGURAZIONE ---
-PDF_FOLDER = "documenti_pdf"
-DB_PATH = "./chroma_db_knowledge_base_pdf"
+PDF_FOLDER = "pipeline/data/0-ingestion"
+DB_PATH = "pipeline/data/2-processing/chroma_db_knowledge_base_pdf"
 
 # Configurazione della pagina Streamlit
 st.set_page_config(layout="wide", page_title="PDF Knowledge Base Inspector")

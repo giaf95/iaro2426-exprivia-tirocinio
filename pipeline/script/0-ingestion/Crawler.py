@@ -14,7 +14,7 @@ from selenium.webdriver.common.by import By
 CONFIG = {
     "DOMAIN": "zoppellaro.net",
     "SITEMAP_URL": "https://www.zoppellaro.net/sitemap.xml",
-    "OUTPUT_FILE": os.path.join(os.path.expanduser("~"), "Desktop", "zoppellaro_estrazzione_autonoma.csv"),
+    "OUTPUT_FILE": "pipeline/data/1-preprocessing/zoppellaro_estrazzione_autonoma_.csv",
 }
 
 # ==============================================================================

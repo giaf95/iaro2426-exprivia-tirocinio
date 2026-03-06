@@ -5,8 +5,8 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
 # --- CONFIGURAZIONE ---
-INPUT_KB_JSON = "knowledge_base_v1.json"
-PERSIST_DIR = "./chroma_db_zoppellaro"
+INPUT_KB_JSON = "pipeline/data/2-processing/knowledge_base_v1.json"
+PERSIST_DIR = "pipeline/data/2-processing/chroma_db_zoppellaro"
 
 def load_knowledge_base(json_path):
     if not os.path.exists(json_path):

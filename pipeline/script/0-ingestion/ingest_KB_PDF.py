@@ -4,8 +4,9 @@ from sentence_transformers import SentenceTransformer
 import os
 
 # --- CONFIGURAZIONE ---
-PDF_FOLDER = "documenti_pdf" 
-DB_PATH = "./chroma_db_knowledge_base_pdf"  
+PDF_FOLDER = "pipeline/data/0-ingestion" 
+DB_PATH = "pipeline/data/2-processing/chroma_db_knowledge_base_pdf" 
+PDF_DA_LEGGERE = ["MANUALE_RT_REV_12_IT.pdf", "ROOFTOP_ZPSTDRT00_IT_rev02.pdf"]
 
 def extract_text_with_coordinates(pdf_path):
     """
@@ -56,7 +57,7 @@ def create_database():
     collection = client.create_collection(name="pdf_kb")
     
     # 3. Trova tutti i PDF nella cartella
-    pdf_files = [f for f in os.listdir(PDF_FOLDER) if f.endswith('.pdf')]
+    pdf_files = [f for f in os.listdir(PDF_FOLDER) if f in PDF_DA_LEGGERE]
     
     all_documents = []
     all_metadatas = []

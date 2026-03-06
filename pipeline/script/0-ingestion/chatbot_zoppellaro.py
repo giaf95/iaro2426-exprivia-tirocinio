@@ -4,9 +4,9 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
 # --- CONFIGURAZIONE ---
-PERSIST_DIR = "./chroma_db_zoppellaro"
+PERSIST_DIR = "pipeline/data/2-processing/chroma_db_zoppellaro"
 SCORE_THRESHOLD = 1.2 
-WEBSITE_URL = "https://www.zoppellaro.net" 
+WEBSITE_URL = "https://www.zoppellaro.net"
 
 def load_system():
     print("--- CHATBOT ZOPPELLARO (VERSIONE ESAME) ---")

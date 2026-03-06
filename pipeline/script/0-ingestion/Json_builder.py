@@ -5,8 +5,8 @@ import hashlib
 from datetime import datetime
 
 # --- CONFIGURAZIONE ---
-INPUT_FILE = "zoppellaro_estrazzione_autonoma.csv" 
-OUTPUT_KB = "knowledge_base_v1.json"
+INPUT_FILE = "pipeline/data/1-preprocessing/zoppellaro_estrazzione_autonoma_.csv" 
+OUTPUT_KB = "pipeline/data/2-processing/knowledge_base_v1.json"
 
 def generate_id(text):
     """Genera un ID univoco per ogni blocco di testo."""
