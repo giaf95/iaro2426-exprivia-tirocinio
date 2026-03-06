@@ -101,7 +101,7 @@ def cerca_catalogo_generico(parametro_richiesto: str) -> str:
         return "Errore: Database catalogo non caricato."
     
     # K molto alto per pescare quanti più modelli possibili da far confrontare all'LLM
-    docs = db_catalogo.similarity_search(parametro_richiesto, k=25)
+    docs = db_catalogo.similarity_search(parametro_richiesto, k=10)
     
     risultati = [f"[Modello: {d.metadata.get('modello_id', 'N/D')}] {d.page_content}" for d in docs]
     print(f"[TOOL] Estratti {len(docs)} documenti da far confrontare all'LLM.")
@@ -181,8 +181,8 @@ if __name__ == "__main__":
     print("\nChatbot Tool-Based avviato. Scrivi 'esci' per terminare.")
     
     istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico preciso e analitico. 
-    REGOLA 1 (ANTI-ALLUCINAZIONE): Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Se l'informazione (come un numero verde) non c'è, scrivi: "L'informazione non è presente nei documenti forniti."
-    REGOLA 2 (CLASSIFICHE): Se l'utente chiede i "top 3" o il "maggiore", DEVI estrarre mentalmente tutti i valori numerici dai documenti ricevuti, ordinarli matematicamente in modo decrescente e poi rispondere elencando i modelli corretti. Non fermarti al primo che leggi.""")
+    REGOLA 1 (ANTI-ALLUCINAZIONE): Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Se l'informazione non c'è, scrivi: "L'informazione non è presente nei documenti forniti."
+    REGOLA 2 (CLASSIFICHE): Se l'utente chiede i "top 3" o il "maggiore", analizza i valori numerici presenti nel testo che hai ricevuto, trova i più alti e rispondi indicando i modelli corrispondenti. Sii conciso.""")
     
     while True:
         user_input = input("\nUtente: ")
