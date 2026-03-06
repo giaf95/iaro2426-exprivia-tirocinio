@@ -91,7 +91,7 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
     return "\n".join(risultati)
 
 @tool
-def analizza_top_catalogo(parametro_richiesto: str, top_n: int = 3) -> str:
+def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo, come trovare classifiche, i valori massimi, minimi o "i top 3".
     QUANDO NON USARLO: Non usarlo per cercare testo o descrizioni.
     PARAMETRI:

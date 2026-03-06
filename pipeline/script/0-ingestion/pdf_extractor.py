@@ -31,7 +31,7 @@ def start_dinamico():
 
     # Setup percorsi output
     cartella = os.path.dirname(path_pdf)
-    nome_output = os.path.join(cartella, "CATALOGO_FINALE_UNITA.xlsx")
+    nome_output = os.path.join(cartella, "pipeline/data/1-preprocessing/catalogo.xlsx")
     
     # Dizionario che verrà popolato automaticamente leggendo il PDF
     mappa_unita_automatica = {} 

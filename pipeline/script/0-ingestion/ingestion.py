@@ -70,7 +70,7 @@ def load_embeddings():
     return embeddings
 
 # crea il vector store e lo salva in disco
-def create_vectorstore(documents, embeddings, persist_dir="./chroma_db_catalogo"):
+def create_vectorstore(documents, embeddings, persist_dir="pipeline/data/2-processing/chroma_db_catalogo"):
     print(f"embedding {len(documents)} documenti...")
     Path(persist_dir).mkdir(exist_ok=True)
     
