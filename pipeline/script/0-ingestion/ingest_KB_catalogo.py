@@ -139,7 +139,7 @@ if __name__ == "__main__":
             "embedding_model": "all-MiniLM-L6-v2",
             "vector_store": "Chroma"
         }
-        with open("ingestion_metadata.json", "w") as f:
+        with open("metadata_catalogo.json", "w") as f:
             json.dump(metadata, f, indent=2)
         print("\nok: metadata salvato")
         

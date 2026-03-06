@@ -1,0 +1,6 @@
+{
+  "num_documents": 44,
+  "num_columns": 103,
+  "embedding_model": "all-MiniLM-L6-v2",
+  "vector_store": "Chroma"
+}
