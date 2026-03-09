@@ -97,7 +97,7 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     PARAMETRI:
     - 'parametro_richiesto': la grandezza fisica da cercare.
     - 'top_n': il numero di modelli da restituire."""
-    print(f"\n[TOOL] Esecuzione ANALIZZA_TOP_CATALOGO")
+    print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
     print(f"[TOOL] Estrazione dati strutturati -> Parametro: '{parametro_richiesto}', Top: {top_n}")
     
     try:
