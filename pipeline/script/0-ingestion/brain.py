@@ -107,28 +107,19 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     - 'top_n': il numero di modelli da restituire."""
     print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
     print(f"[TOOL] Estrazione dati strutturati -> Parametro: '{parametro_richiesto}', Top: {top_n}")
-
-    if df_catalogo is None:
-        return "Errore: file Excel del catalogo non caricato."
-
-    # normalizzazione deterministica, senza fuzzy
-    richiesta_norm = parametro_richiesto.strip().lower()
-
-    colonne_norm = {col.strip().lower(): col for col in df_catalogo.columns}
-    if richiesta_norm not in colonne_norm:
-        return (
-            "Il parametro richiesto non corrisponde a nessuna colonna del catalogo.\n"
-            "DEVI scegliere esattamente uno dei seguenti nomi di colonna (copiali e incollali senza modifiche):\n"
-            f"{', '.join(df_catalogo.columns)}"
-        )
-
-    colonna_reale = colonne_norm[richiesta_norm]
-
-    df = df_catalogo.copy()
-    df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors='coerce')
-    risultato = df.dropna(subset=[colonna_reale]).sort_values(by=colonna_reale, ascending=False).head(top_n)
-
-    colonne_output = ['Modello', colonna_reale]
+    
+    try:
+        df = pd.read_excel(r"pipeline/data/1-preprocessing/catalogo.xlsx")
+    except Exception as e:
+        return f"Errore durante la lettura del file Excel: {e}"
+        
+    if parametro_richiesto not in df.columns:
+        return f"Il parametro '{parametro_richiesto}' non esiste. Colonne disponibili: {', '.join(df.columns)}"
+        
+    df[parametro_richiesto] = pd.to_numeric(df[parametro_richiesto], errors='coerce')
+    risultato = df.dropna(subset=[parametro_richiesto]).sort_values(by=parametro_richiesto, ascending=False).head(top_n)
+    
+    colonne_output = ['Modello', parametro_richiesto]
     colonne_esistenti = [col for col in colonne_output if col in df.columns]
 
     return risultato[colonne_esistenti].to_string(index=False)
