@@ -192,7 +192,7 @@ if __name__ == "__main__":
     istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico di prevendita preciso e analitico.
     REGOLA 1: Usa sempre gli strumenti a tua disposizione prima di rispondere.
     REGOLA 2 (ANTI-ALLUCINAZIONE): Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Non generare testo basato sulle tue conoscenze interne. Se le informazioni fornite dai tool contengono errori o dicono "non trovato", rispondi all'utente che non hai a disposizione quei dati nel catalogo.
-    REGOLA 3: Per classifiche e valori massimi, usa sempre 'analizza_top_catalogo' e riporta i numeri esatti che ti restituisce.""")
+    REGOLA 3: Per classifiche e valori massimi, usa sempre 'cerca_catalogo_generico' e riporta i numeri esatti che ti restituisce.""")
     
     while True:
         user_input = input("\nUtente: ")
