@@ -133,7 +133,9 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     if not punteggi:
         match_simili = difflib.get_close_matches(parametro_richiesto.replace('_', ' '), list(colonne_catalogo), n=5, cutoff=0.1)
         opzioni = match_simili if match_simili else colonne_catalogo[:5]
-        return f"ERRORE AI: Colonna non trovata. Chiedi all'utente quale di queste opzioni intendeva: {', '.join(opzioni)}."
+        lista_numerate = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(opzioni)])
+        return (f"ERRORE AI: Colonna non trovata. Mostra all'utente questo elenco:\n{lista_numerate}\n"
+                f"ORDINE PER L'AI: Se l'utente risponde con un numero (es '2'), DEVI chiamare questo tool passando il TESTO ESATTO dell'opzione corrispondente. NON passare il numero.")
 
     max_score = max(punteggi.values())
     soglia = max(1, len(parole_richiesta) * 0.5)
@@ -141,7 +143,9 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     migliori_colonne = [col for col, score in punteggi.items() if score == max_score and score >= soglia]
     
     if len(migliori_colonne) > 1:
-        return f"ERRORE AI: Parametro ambiguo. Chiedi all'utente QUALE di queste opzioni esatte intendeva: {', '.join(migliori_colonne)}."
+        lista_numerate = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(migliori_colonne)])
+        return (f"ERRORE AI: Parametro ambiguo. Mostra all'utente questo elenco:\n{lista_numerate}\n"
+                f"ORDINE PER L'AI: Se l'utente risponde con un numero, DEVI usare il TESTO ESATTO di quell'opzione per chiamare il tool. NON usare il numero.")
     elif len(migliori_colonne) == 1:
         colonna_reale = migliori_colonne[0]
         print(f"[TOOL] Match: '{parametro_richiesto}' -> '{colonna_reale}'")
@@ -233,10 +237,9 @@ if __name__ == "__main__":
     
     istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico di prevendita preciso e analitico.
 REGOLA 1: Usa sempre gli strumenti a tua disposizione prima di rispondere.
-REGOLA 2 (ANTI-ALLUCINAZIONE): Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Non generare testo basato sulle tue conoscenze interne. Se le informazioni fornite dai tool contengono errori o dicono "non trovato", rispondi all'utente che non hai a disposizione quei dati nel catalogo.
-REGOLA 3: Per classifiche e valori massimi o minimi, usa sempre 'cerca_catalogo_generico' e riporta i numeri esatti che ti restituisce.
-REGOLA 4 (PARAMETRO CATALOGO): Quando chiami 'cerca_catalogo_generico', il campo 'parametro_richiesto' DEVE essere esattamente uguale al nome di una colonna del file Excel del catalogo, senza snake_case, senza traduzioni e senza abbreviazioni.
-SE RICEVI dal tool una risposta che elenca le colonne disponibili e ti dice di scegliere un nome esatto, chiedi all'utente quale colonna preferisce e usa la sua scelta esatta per fare una nuova chiamata al tool.""")
+REGOLA 2 (ANTI-ALLUCINAZIONE): Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Non generare testo basato sulle tue conoscenze interne.
+REGOLA 3: Per classifiche e valori massimi o minimi, usa sempre 'cerca_catalogo_generico'.
+REGOLA 4 (SCELTA NUMERICA): Se mostri all'utente un elenco numerato di colonne e l'utente risponde con un numero (es. "scelgo la 2"), TU NON DEVI MAI INVIARE IL NUMERO AL TOOL. Devi recuperare il nome completo della colonna associata a quel numero dalla chat precedente e inviare L'INTERA STRINGA ESATTA.""")
 
     cronologia_messaggi = [istruzioni_di_sistema]
     
@@ -252,4 +255,5 @@ SE RICEVI dal tool una risposta che elenca le colonne disponibili e ti dice di s
         
         risposta_assistente = result['messages'][-1]
         print(f"\nAssistente: {risposta_assistente.content}")
+        
         cronologia_messaggi = result['messages']
