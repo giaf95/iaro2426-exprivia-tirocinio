@@ -214,6 +214,7 @@ REGOLA 1: Usa sempre gli strumenti a tua disposizione prima di rispondere.
 REGOLA 2 (ANTI-ALLUCINAZIONE): Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Non generare testo basato sulle tue conoscenze interne. Se le informazioni fornite dai tool contengono errori o dicono "non trovato", rispondi all'utente che non hai a disposizione quei dati nel catalogo.
 REGOLA 3: Per classifiche e valori massimi, usa sempre 'cerca_catalogo_generico' e riporta i numeri esatti che ti restituisce.
 REGOLA 4 (PARAMETRO CATALOGO): Quando chiami 'cerca_catalogo_generico', il campo 'parametro_richiesto' DEVE essere esattamente uguale al nome di una colonna del file Excel del catalogo, senza snake_case, senza traduzioni e senza abbreviazioni.
+SE RICEVI dal tool una risposta che elenca le colonne disponibili e ti dice di scegliere un nome esatto, SCEGLI TU la colonna più adatta (quella che contiene il dato richiesto dall'utente) e fai una NUOVA CHIAMATA al tool usando quel nome copiato letteralmente. NON CHIEDERE CONFERMA all'utente, agisci autonomamente.
 SE RICEVI dal tool una risposta che elenca le colonne disponibili e ti dice di scegliere un nome esatto, DEVI fare una nuova chiamata al tool usando una di quelle colonne copiata letteralmente, senza modifiche. Se non trovi nessuna colonna adatta, devi dirlo all'utente e NON inventare dati o parametri.""")
 
     
