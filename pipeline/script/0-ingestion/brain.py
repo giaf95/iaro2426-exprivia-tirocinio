@@ -130,7 +130,7 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
     risultato = df.dropna(subset=[colonna_reale]).sort_values(by=colonna_reale, ascending=False).head(top_n)
 
-    colonne_output = ["Modello", colonna_reale]
+    colonne_output = ["Modello PAL", colonna_reale]
     colonne_esistenti = [col for col in colonne_output if col in df.columns]
 
     return risultato[colonne_esistenti].to_string(index=False)
@@ -170,7 +170,7 @@ tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerc
 
 # configurazione LangGraph e LLM
 
-llm = ChatOllama(model="qwen3:4b", temperature=0)
+llm = ChatOllama(model="qwen2.5:3b", temperature=0)
 llm_with_tools = llm.bind_tools(tools)
 
 def call_model(state: AgentState):
