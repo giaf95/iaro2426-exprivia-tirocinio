@@ -107,7 +107,7 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo, come trovare classifiche, i valori massimi, minimi o "i top 3".
     QUANDO NON USARLO: Non usarlo per cercare testo o descrizioni.
     PARAMETRI:
-    - 'parametro_richiesto': il NOME ESATTO della colonna così come appare nel file Excel del catalogo. Non usare snake_case, non tradurre, non abbreviare.
+    - 'parametro_richiesto': il NOME ESATTO della colonna.
     - 'top_n': il numero di modelli da restituire."""
     print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
     print(f"[TOOL] Estrazione dati strutturati -> Parametro: '{parametro_richiesto}', Top: {top_n}")
@@ -115,18 +115,21 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     if df_catalogo is None:
         return "Errore: file Excel del catalogo non caricato."
 
-    richiesta_norm = parametro_richiesto.replace('_', ' ').strip().lower()
+    richiesta_norm = parametro_richiesto.replace('_', ' ').replace('percent', '%').strip().lower()
     colonne_norm = {col.strip().lower(): col for col in colonne_catalogo}
 
-    if richiesta_norm not in colonne_norm:
-        match_simili = difflib.get_close_matches(richiesta_norm, list(colonne_norm.keys()), n=5, cutoff=0.2)
+    match_sicuro = difflib.get_close_matches(richiesta_norm, list(colonne_norm.keys()), n=1, cutoff=0.7)
 
+    if match_sicuro:
+        colonna_reale = colonne_norm[match_sicuro[0]]
+    else:
+        match_simili = difflib.get_close_matches(richiesta_norm, list(colonne_norm.keys()), n=5, cutoff=0.2)
         if not match_simili:
             parole = richiesta_norm.split()
             for key in colonne_norm.keys():
                 if any(p in key for p in parole if len(p) > 3):
                     match_simili.append(key)
-            match_simili = list(set(match_simili))[:5] # Prendi i primi 5
+            match_simili = list(set(match_simili))[:5]
             
         opzioni_reali = [colonne_norm[m] for m in match_simili] if match_simili else colonne_catalogo[:5]
         
@@ -135,8 +138,6 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
             f"ORDINE: Chiedi all'utente quale di queste opzioni specifiche intendeva elencandole chiaramente: {', '.join(opzioni_reali)}. "
             "NON inventare risposte."
         )
-
-    colonna_reale = colonne_norm[richiesta_norm]
 
     df = df_catalogo.copy()
     df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
