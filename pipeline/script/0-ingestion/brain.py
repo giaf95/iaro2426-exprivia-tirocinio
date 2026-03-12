@@ -72,7 +72,7 @@ try:
     pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
     excel_path = os.path.join(pipeline_dir, "data", "1-preprocessing", "catalogo.xlsx")
     df_catalogo = pd.read_excel(excel_path)
-    colonne_catalogo = list(df_catalogo.columns)
+    colonne_catalogo = [col for col in df_catalogo.columns if not str(col).strip().lower().endswith("unit")]
 except Exception:
     df_catalogo = None
     colonne_catalogo = []
