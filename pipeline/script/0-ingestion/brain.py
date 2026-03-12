@@ -133,9 +133,8 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     if not punteggi:
         match_simili = difflib.get_close_matches(parametro_richiesto.replace('_', ' '), list(colonne_catalogo), n=5, cutoff=0.1)
         opzioni = match_simili if match_simili else colonne_catalogo[:5]
-        lista_numerate = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(opzioni)])
-        return (f"ERRORE AI: Colonna non trovata. Mostra all'utente questo elenco:\n{lista_numerate}\n"
-                f"ORDINE PER L'AI: Se l'utente risponde con un numero (es '2'), DEVI chiamare questo tool passando il TESTO ESATTO dell'opzione corrispondente. NON passare il numero.")
+        lista_opzioni = "\n".join([f"- {opt}" for opt in opzioni])
+        return f"Dì all'utente ESATTAMENTE questo: 'Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n{lista_opzioni}'"
 
     max_score = max(punteggi.values())
     soglia = max(1, len(parole_richiesta) * 0.5)
@@ -143,14 +142,13 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     migliori_colonne = [col for col, score in punteggi.items() if score == max_score and score >= soglia]
     
     if len(migliori_colonne) > 1:
-        lista_numerate = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(migliori_colonne)])
-        return (f"ERRORE AI: Parametro ambiguo. Mostra all'utente questo elenco:\n{lista_numerate}\n"
-                f"ORDINE PER L'AI: Se l'utente risponde con un numero, DEVI usare il TESTO ESATTO di quell'opzione per chiamare il tool. NON usare il numero.")
+        lista_opzioni = "\n".join([f"- {opt}" for opt in migliori_colonne])
+        return f"Dì all'utente ESATTAMENTE questo: 'Il parametro è ambiguo. Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n{lista_opzioni}'"
     elif len(migliori_colonne) == 1:
         colonna_reale = migliori_colonne[0]
         print(f"[TOOL] Match: '{parametro_richiesto}' -> '{colonna_reale}'")
     else:
-        return "ERRORE AI: Nessuna colonna valida trovata. Chiedi chiarimenti all'utente."
+        return "Nessuna colonna valida trovata. Chiedi all'utente di riformulare."
 
     df = df_catalogo.copy()
     df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
@@ -235,11 +233,11 @@ app = workflow.compile()
 if __name__ == "__main__":
     print("\nChatbot Tool-Based avviato. Scrivi 'esci' per terminare.")
     
-    istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico di prevendita preciso e analitico.
+    istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico preciso e analitico.
 REGOLA 1: Usa sempre gli strumenti a tua disposizione prima di rispondere.
-REGOLA 2 (ANTI-ALLUCINAZIONE): Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Non generare testo basato sulle tue conoscenze interne.
-REGOLA 3: Per classifiche e valori massimi o minimi, usa sempre 'cerca_catalogo_generico'.
-REGOLA 4 (SCELTA NUMERICA): Se mostri all'utente un elenco numerato di colonne e l'utente risponde con un numero (es. "scelgo la 2"), TU NON DEVI MAI INVIARE IL NUMERO AL TOOL. Devi recuperare il nome completo della colonna associata a quel numero dalla chat precedente e inviare L'INTERA STRINGA ESATTA.""")
+REGOLA 2: Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Non inventare nulla basandoti sulle tue conoscenze interne.
+REGOLA 3: Per classifiche, confronti o valori massimi/minimi, usa sempre 'cerca_catalogo_generico'.
+REGOLA 4: Se un tool ti restituisce un messaggio che ti chiede di far copiare e incollare un'opzione all'utente, tu devi semplicemente riportare quel messaggio e quell'elenco all'utente, parola per parola.""")
 
     cronologia_messaggi = [istruzioni_di_sistema]
     
