@@ -212,18 +212,22 @@ if __name__ == "__main__":
     istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico di prevendita preciso e analitico.
 REGOLA 1: Usa sempre gli strumenti a tua disposizione prima di rispondere.
 REGOLA 2 (ANTI-ALLUCINAZIONE): Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Non generare testo basato sulle tue conoscenze interne. Se le informazioni fornite dai tool contengono errori o dicono "non trovato", rispondi all'utente che non hai a disposizione quei dati nel catalogo.
-REGOLA 3: Per classifiche e valori massimi, usa sempre 'cerca_catalogo_generico' e riporta i numeri esatti che ti restituisce.
+REGOLA 3: Per classifiche e valori massimi o minimi, usa sempre 'cerca_catalogo_generico' e riporta i numeri esatti che ti restituisce.
 REGOLA 4 (PARAMETRO CATALOGO): Quando chiami 'cerca_catalogo_generico', il campo 'parametro_richiesto' DEVE essere esattamente uguale al nome di una colonna del file Excel del catalogo, senza snake_case, senza traduzioni e senza abbreviazioni.
-SE RICEVI dal tool una risposta che elenca le colonne disponibili e ti dice di scegliere un nome esatto, DEVI fare una nuova chiamata al tool usando una di quelle colonne copiata letteralmente, senza modifiche. Se non trovi nessuna colonna adatta, devi dirlo all'utente e NON inventare dati o parametri.""")
+SE RICEVI dal tool una risposta che elenca le colonne disponibili e ti dice di scegliere un nome esatto, chiedi all'utente quale colonna preferisce e usa la sua scelta esatta per fare una nuova chiamata al tool.""")
 
+    cronologia_messaggi = [istruzioni_di_sistema]
     
     while True:
         user_input = input("\nUtente: ")
         if user_input.lower() == 'esci':
             break
             
-        initial_state = {"messages": [istruzioni_di_sistema, HumanMessage(content=user_input)]}
-        # aggiunto limite di ricorsione per bloccare i loop infiniti
-        result = app.invoke(initial_state, {"recursion_limit": 10})
+        cronologia_messaggi.append(HumanMessage(content=user_input))
         
-        print(f"\nAssistente: {result['messages'][-1].content}")
+        current_state = {"messages": cronologia_messaggi}
+        result = app.invoke(current_state, {"recursion_limit": 10})
+        
+        risposta_assistente = result['messages'][-1]
+        print(f"\nAssistente: {risposta_assistente.content}")
+        cronologia_messaggi = result['messages']
