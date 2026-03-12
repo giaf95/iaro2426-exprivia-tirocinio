@@ -65,6 +65,17 @@ db_catalogo = select_and_load_db("catalogo", embeddings_model)
 db_web = select_and_load_db("sito_web", embeddings_model)
 db_manuali = select_and_load_db("manuali", embeddings_model)
 
+try:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
+    excel_path = os.path.join(pipeline_dir, "data", "1-preprocessing", "catalogo.xlsx")
+    df_catalogo = pd.read_excel(excel_path)
+    colonne_catalogo = list(df_catalogo.columns)
+except Exception:
+    df_catalogo = None
+    colonne_catalogo = []
+
+
 # definizione dei tool
 
 @tool
@@ -95,35 +106,35 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo, come trovare classifiche, i valori massimi, minimi o "i top 3".
     QUANDO NON USARLO: Non usarlo per cercare testo o descrizioni.
     PARAMETRI:
-    - 'parametro_richiesto': la grandezza fisica da cercare.
+    - 'parametro_richiesto': il NOME ESATTO della colonna così come appare nel file Excel del catalogo. Non usare snake_case, non tradurre, non abbreviare.
     - 'top_n': il numero di modelli da restituire."""
     print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
     print(f"[TOOL] Estrazione dati strutturati -> Parametro: '{parametro_richiesto}', Top: {top_n}")
-    
-    try:
-        #trova il percorso assoluto
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        #risale di due cartelle
-        pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
-        
-        #Scostruisce il percorso finale unendo i pezzi
-        excel_path = os.path.join(pipeline_dir, "data", "1-preprocessing", "catalogo.xlsx")
-        
-        df = pd.read_excel(excel_path)
-    except Exception as e:
-        return f"Errore durante la lettura del file Excel: {e}"
-        
-    if parametro_richiesto not in df.columns:
-        return f"Il parametro '{parametro_richiesto}' non esiste. Colonne disponibili: {', '.join(df.columns)}"
-        
-    df[parametro_richiesto] = pd.to_numeric(df[parametro_richiesto], errors='coerce')
-    risultato = df.dropna(subset=[parametro_richiesto]).sort_values(by=parametro_richiesto, ascending=False).head(top_n)
-    
-    colonne_output = ['Modello', parametro_richiesto]
+
+    if df_catalogo is None:
+        return "Errore: file Excel del catalogo non caricato."
+
+    richiesta_norm = parametro_richiesto.strip().lower()
+    colonne_norm = {col.strip().lower(): col for col in colonne_catalogo}
+
+    if richiesta_norm not in colonne_norm:
+        return (
+            "Il parametro richiesto non corrisponde a nessuna colonna del catalogo.\n"
+            "DEVI scegliere esattamente uno dei seguenti nomi di colonna (copiali e incollali senza modifiche):\n"
+            f"{', '.join(colonne_catalogo)}"
+        )
+
+    colonna_reale = colonne_norm[richiesta_norm]
+
+    df = df_catalogo.copy()
+    df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
+    risultato = df.dropna(subset=[colonna_reale]).sort_values(by=colonna_reale, ascending=False).head(top_n)
+
+    colonne_output = ["Modello", colonna_reale]
     colonne_esistenti = [col for col in colonne_output if col in df.columns]
-    
+
     return risultato[colonne_esistenti].to_string(index=False)
+
 
 @tool
 def cerca_sito_web(query: str) -> str:
@@ -159,7 +170,7 @@ tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerc
 
 # configurazione LangGraph e LLM
 
-llm = ChatOllama(model="qwen2.5:3b", temperature=0)
+llm = ChatOllama(model="qwen3:4b", temperature=0)
 llm_with_tools = llm.bind_tools(tools)
 
 def call_model(state: AgentState):
@@ -199,9 +210,12 @@ if __name__ == "__main__":
     print("\nChatbot Tool-Based avviato. Scrivi 'esci' per terminare.")
     
     istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico di prevendita preciso e analitico.
-    REGOLA 1: Usa sempre gli strumenti a tua disposizione prima di rispondere.
-    REGOLA 2 (ANTI-ALLUCINAZIONE): Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Non generare testo basato sulle tue conoscenze interne. Se le informazioni fornite dai tool contengono errori o dicono "non trovato", rispondi all'utente che non hai a disposizione quei dati nel catalogo.
-    REGOLA 3: Per classifiche e valori massimi, usa sempre 'cerca_catalogo_generico' e riporta i numeri esatti che ti restituisce.""")
+REGOLA 1: Usa sempre gli strumenti a tua disposizione prima di rispondere.
+REGOLA 2 (ANTI-ALLUCINAZIONE): Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Non generare testo basato sulle tue conoscenze interne. Se le informazioni fornite dai tool contengono errori o dicono "non trovato", rispondi all'utente che non hai a disposizione quei dati nel catalogo.
+REGOLA 3: Per classifiche e valori massimi, usa sempre 'cerca_catalogo_generico' e riporta i numeri esatti che ti restituisce.
+REGOLA 4 (PARAMETRO CATALOGO): Quando chiami 'cerca_catalogo_generico', il campo 'parametro_richiesto' DEVE essere esattamente uguale al nome di una colonna del file Excel del catalogo, senza snake_case, senza traduzioni e senza abbreviazioni.
+SE RICEVI dal tool una risposta che elenca le colonne disponibili e ti dice di scegliere un nome esatto, DEVI fare una nuova chiamata al tool usando una di quelle colonne copiata letteralmente, senza modifiche. Se non trovi nessuna colonna adatta, devi dirlo all'utente e NON inventare dati o parametri.""")
+
     
     while True:
         user_input = input("\nUtente: ")
