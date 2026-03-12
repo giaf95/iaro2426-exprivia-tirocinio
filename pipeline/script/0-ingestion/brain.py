@@ -105,50 +105,48 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
 
 @tool
 def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
-    """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo, come trovare classifiche, i valori massimi, minimi o "i top 3".
-    QUANDO NON USARLO: Non usarlo per cercare testo o descrizioni.
+    """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo.
     PARAMETRI:
-    - 'parametro_richiesto': il NOME ESATTO della colonna.
+    - 'parametro_richiesto': il NOME della colonna.
     - 'top_n': il numero di modelli da restituire."""
     print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
-    print(f"[TOOL] Estrazione dati strutturati -> Parametro: '{parametro_richiesto}', Top: {top_n}")
+    print(f"[TOOL] Estrazione -> Parametro: '{parametro_richiesto}', Top: {top_n}")
 
     if df_catalogo is None:
-        return "Errore: file Excel del catalogo non caricato."
+        return "Errore: file Excel non caricato."
 
-    def crea_fingerprint(testo):
-        t = str(testo).lower()
-        t = t.replace('percentuale', '').replace('percent', '')
-        return re.sub(r'[^a-z0-9]', '', t)
-
-    richiesta_fingerprint = crea_fingerprint(parametro_richiesto)
+    richiesta_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', parametro_richiesto).lower()
+    parole_richiesta = [p for p in richiesta_pulita.split() if len(p) > 0]
     
-    colonna_reale = None
-
+    punteggi = {}
     for col in colonne_catalogo:
-        if crea_fingerprint(col) == richiesta_fingerprint:
-            colonna_reale = col
-            break
+        col_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', col).lower()
+        parole_col = col_pulita.split()
+        
+        score = 0
+        for pr in parole_richiesta:
+            if any(pr == pc or pr in pc for pc in parole_col):
+                score += 1
+        if score > 0:
+            punteggi[col] = score
 
-    if not colonna_reale:
-        richiesta_norm = parametro_richiesto.replace('_', ' ').strip().lower()
-        colonne_norm = {col.strip().lower(): col for col in colonne_catalogo}
-        
-        match_simili = difflib.get_close_matches(richiesta_norm, list(colonne_norm.keys()), n=5, cutoff=0.2)
-        if not match_simili:
-            parole = richiesta_norm.split()
-            for key in colonne_norm.keys():
-                if any(p in key for p in parole if len(p) > 3):
-                    match_simili.append(key)
-            match_simili = list(set(match_simili))[:5]
-            
-        opzioni_reali = [colonne_norm[m] for m in match_simili] if match_simili else colonne_catalogo[:5]
-        
-        return (
-            f"ERRORE AI: La colonna '{parametro_richiesto}' non esiste. "
-            f"ORDINE: Chiedi all'utente quale di queste opzioni specifiche intendeva elencandole chiaramente: {', '.join(opzioni_reali)}. "
-            "NON inventare risposte."
-        )
+    if not punteggi:
+        match_simili = difflib.get_close_matches(parametro_richiesto.replace('_', ' '), list(colonne_catalogo), n=5, cutoff=0.1)
+        opzioni = match_simili if match_simili else colonne_catalogo[:5]
+        return f"ERRORE AI: Colonna non trovata. Chiedi all'utente quale di queste opzioni intendeva: {', '.join(opzioni)}."
+
+    max_score = max(punteggi.values())
+    soglia = max(1, len(parole_richiesta) * 0.5)
+    
+    migliori_colonne = [col for col, score in punteggi.items() if score == max_score and score >= soglia]
+    
+    if len(migliori_colonne) > 1:
+        return f"ERRORE AI: Parametro ambiguo. Chiedi all'utente QUALE di queste opzioni esatte intendeva: {', '.join(migliori_colonne)}."
+    elif len(migliori_colonne) == 1:
+        colonna_reale = migliori_colonne[0]
+        print(f"[TOOL] Match: '{parametro_richiesto}' -> '{colonna_reale}'")
+    else:
+        return "ERRORE AI: Nessuna colonna valida trovata. Chiedi chiarimenti all'utente."
 
     df = df_catalogo.copy()
     df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
