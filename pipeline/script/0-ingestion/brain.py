@@ -3,6 +3,7 @@ import sqlite3
 import tkinter as tk
 import pandas as pd
 import difflib
+import re
 from tkinter import filedialog
 from typing import Annotated, List, TypedDict
 import operator
@@ -115,14 +116,24 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     if df_catalogo is None:
         return "Errore: file Excel del catalogo non caricato."
 
-    richiesta_norm = parametro_richiesto.replace('_', ' ').replace('percent', '%').strip().lower()
-    colonne_norm = {col.strip().lower(): col for col in colonne_catalogo}
+    def crea_fingerprint(testo):
+        t = str(testo).lower()
+        t = t.replace('percentuale', '').replace('percent', '')
+        return re.sub(r'[^a-z0-9]', '', t)
 
-    match_sicuro = difflib.get_close_matches(richiesta_norm, list(colonne_norm.keys()), n=1, cutoff=0.7)
+    richiesta_fingerprint = crea_fingerprint(parametro_richiesto)
+    
+    colonna_reale = None
 
-    if match_sicuro:
-        colonna_reale = colonne_norm[match_sicuro[0]]
-    else:
+    for col in colonne_catalogo:
+        if crea_fingerprint(col) == richiesta_fingerprint:
+            colonna_reale = col
+            break
+
+    if not colonna_reale:
+        richiesta_norm = parametro_richiesto.replace('_', ' ').strip().lower()
+        colonne_norm = {col.strip().lower(): col for col in colonne_catalogo}
+        
         match_simili = difflib.get_close_matches(richiesta_norm, list(colonne_norm.keys()), n=5, cutoff=0.2)
         if not match_simili:
             parole = richiesta_norm.split()
