@@ -109,7 +109,16 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     print(f"[TOOL] Estrazione dati strutturati -> Parametro: '{parametro_richiesto}', Top: {top_n}")
     
     try:
-        df = pd.read_excel(r"pipeline/data/1-preprocessing/catalogo.xlsx")
+        #trova il percorso assoluto
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        #risale di due cartelle
+        pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
+        
+        #Scostruisce il percorso finale unendo i pezzi
+        excel_path = os.path.join(pipeline_dir, "data", "1-preprocessing", "catalogo.xlsx")
+        
+        df = pd.read_excel(excel_path)
     except Exception as e:
         return f"Errore durante la lettura del file Excel: {e}"
         
