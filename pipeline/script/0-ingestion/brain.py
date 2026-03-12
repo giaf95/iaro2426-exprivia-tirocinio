@@ -2,6 +2,7 @@ import os
 import sqlite3
 import tkinter as tk
 import pandas as pd
+import difflib
 from tkinter import filedialog
 from typing import Annotated, List, TypedDict
 import operator
@@ -114,14 +115,25 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     if df_catalogo is None:
         return "Errore: file Excel del catalogo non caricato."
 
-    richiesta_norm = parametro_richiesto.strip().lower()
+    richiesta_norm = parametro_richiesto.replace('_', ' ').strip().lower()
     colonne_norm = {col.strip().lower(): col for col in colonne_catalogo}
 
     if richiesta_norm not in colonne_norm:
+        match_simili = difflib.get_close_matches(richiesta_norm, list(colonne_norm.keys()), n=5, cutoff=0.2)
+
+        if not match_simili:
+            parole = richiesta_norm.split()
+            for key in colonne_norm.keys():
+                if any(p in key for p in parole if len(p) > 3):
+                    match_simili.append(key)
+            match_simili = list(set(match_simili))[:5] # Prendi i primi 5
+            
+        opzioni_reali = [colonne_norm[m] for m in match_simili] if match_simili else colonne_catalogo[:5]
+        
         return (
-            "Il parametro richiesto non corrisponde a nessuna colonna del catalogo.\n"
-            "DEVI scegliere esattamente uno dei seguenti nomi di colonna (copiali e incollali senza modifiche):\n"
-            f"{', '.join(colonne_catalogo)}"
+            f"ERRORE AI: La colonna '{parametro_richiesto}' non esiste. "
+            f"ORDINE: Chiedi all'utente quale di queste opzioni specifiche intendeva elencandole chiaramente: {', '.join(opzioni_reali)}. "
+            "NON inventare risposte."
         )
 
     colonna_reale = colonne_norm[richiesta_norm]
