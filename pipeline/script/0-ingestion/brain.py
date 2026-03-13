@@ -164,6 +164,7 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
         print(f"[TOOL] Match ESATTO: '{parametro_richiesto}' -> '{colonna_reale}'")
 
     df = df_catalogo.copy()
+    df[colonna_reale] = df[colonna_reale].apply(lambda x: str(x).replace('.', '').replace(',', '.') if isinstance(x, str) else x)
     df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
     
     is_ascending = True if ordinamento.strip().lower() == "crescente" else False
