@@ -106,8 +106,9 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
 @tool
 def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
     """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo.
+    REGOLA FONDAMENTALE: Usa SOLO i parametri 'parametro_richiesto' e 'top_n'. È severamente vietato inventare altri parametri.
     PARAMETRI:
-    - 'parametro_richiesto': il NOME della colonna.
+    - 'parametro_richiesto': Inserisci ESATTAMENTE il nome della colonna incollato dall'utente.
     - 'top_n': il numero di modelli da restituire."""
     print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
     print(f"[TOOL] Estrazione -> Parametro: '{parametro_richiesto}', Top: {top_n}")
@@ -235,10 +236,10 @@ if __name__ == "__main__":
     
     istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico preciso e analitico.
 REGOLA 1: Usa sempre gli strumenti a tua disposizione prima di rispondere.
-REGOLA 2: Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Non inventare nulla basandoti sulle tue conoscenze interne.
-REGOLA 3: Per classifiche, confronti o valori massimi/minimi, usa sempre 'cerca_catalogo_generico'.
-REGOLA 4: Se un tool ti restituisce un messaggio che ti chiede di far copiare e incollare un'opzione all'utente, tu devi semplicemente riportare quel messaggio e quell'elenco all'utente, parola per parola.""")
-
+REGOLA 2: Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool.
+REGOLA 3: Per classifiche o valori massimi/minimi, usa sempre 'cerca_catalogo_generico'.
+REGOLA 4 (IL COPIA E INCOLLA): Se il tool ti dice di far copiare e incollare un'opzione, riporta il messaggio all'utente.
+REGOLA 5 (LA TUA REAZIONE): Quando l'utente incolla l'opzione, DEVI chiamare immediatamente 'cerca_catalogo_generico' inserendo TUTTO il testo dell'utente dentro 'parametro_richiesto'. NON inserire la parola 'modello' e NON inventare parametri aggiuntivi.""")
     cronologia_messaggi = [istruzioni_di_sistema]
     
     while True:
