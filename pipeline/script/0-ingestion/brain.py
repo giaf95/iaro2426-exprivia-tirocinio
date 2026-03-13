@@ -115,45 +115,56 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
 
     if df_catalogo is None:
         return "Errore: file Excel non caricato."
-
-    richiesta_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', parametro_richiesto).lower()
-    parole_richiesta = [p for p in richiesta_pulita.split() if len(p) > 0]
     
-    punteggi = {}
+    richiesta_esatta = parametro_richiesto.replace('_', ' ').strip().lower()
+    colonna_reale = None
+    
     for col in colonne_catalogo:
-        col_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', col).lower()
-        parole_col = col_pulita.split()
+        if " ".join(col.split()).lower() == " ".join(richiesta_esatta.split()):
+            colonna_reale = col
+            break
+
+    if not colonna_reale:
+        richiesta_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', parametro_richiesto).lower()
+        parole_richiesta = [p for p in richiesta_pulita.split() if len(p) > 0]
         
-        score = 0
-        for pr in parole_richiesta:
-            if any(pr == pc or pr in pc for pc in parole_col):
-                score += 1
-        if score > 0:
-            punteggi[col] = score
+        punteggi = {}
+        for col in colonne_catalogo:
+            col_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', col).lower()
+            parole_col = col_pulita.split()
+            
+            score = 0
+            for pr in parole_richiesta:
+                if any(pr == pc or pr in pc for pc in parole_col):
+                    score += 1
+            if score > 0:
+                punteggi[col] = score
 
-    if not punteggi:
-        match_simili = difflib.get_close_matches(parametro_richiesto.replace('_', ' '), list(colonne_catalogo), n=5, cutoff=0.1)
-        opzioni = match_simili if match_simili else colonne_catalogo[:5]
-        lista_opzioni = "\n".join([f"- {opt}" for opt in opzioni])
-        return f"Dì all'utente ESATTAMENTE questo: 'Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n{lista_opzioni}'"
+        if not punteggi:
+            match_simili = difflib.get_close_matches(parametro_richiesto.replace('_', ' '), list(colonne_catalogo), n=5, cutoff=0.1)
+            opzioni = match_simili if match_simili else colonne_catalogo[:5]
+            lista_opzioni = "\n".join([f"- {opt}" for opt in opzioni])
+            return f"Dì all'utente ESATTAMENTE questo: 'Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n{lista_opzioni}'"
 
-    max_score = max(punteggi.values())
-    soglia = max(1, len(parole_richiesta) * 0.5)
-    
-    migliori_colonne = [col for col, score in punteggi.items() if score == max_score and score >= soglia]
-    
-    if len(migliori_colonne) > 1:
-        lista_opzioni = "\n".join([f"- {opt}" for opt in migliori_colonne])
-        return f"Dì all'utente ESATTAMENTE questo: 'Il parametro è ambiguo. Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n{lista_opzioni}'"
-    elif len(migliori_colonne) == 1:
-        colonna_reale = migliori_colonne[0]
-        print(f"[TOOL] Match: '{parametro_richiesto}' -> '{colonna_reale}'")
+        max_score = max(punteggi.values())
+        soglia = max(1, len(parole_richiesta) * 0.5)
+        
+        migliori_colonne = [col for col, score in punteggi.items() if score == max_score and score >= soglia]
+        
+        if len(migliori_colonne) > 1:
+            lista_opzioni = "\n".join([f"- {opt}" for opt in migliori_colonne])
+            return f"Dì all'utente ESATTAMENTE questo: 'Il parametro è ambiguo. Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n{lista_opzioni}'"
+        elif len(migliori_colonne) == 1:
+            colonna_reale = migliori_colonne[0]
+            print(f"[TOOL] Match parziale: '{parametro_richiesto}' -> '{colonna_reale}'")
+        else:
+            return "Nessuna colonna valida trovata. Chiedi all'utente di riformulare."
     else:
-        return "Nessuna colonna valida trovata. Chiedi all'utente di riformulare."
+        print(f"[TOOL] Match ESATTO: '{parametro_richiesto}' -> '{colonna_reale}'")
 
     df = df_catalogo.copy()
     df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
-    risultato = df.dropna(subset=[colonna_reale]).sort_values(by=colonna_reale, ascending=False).head(top_n)
+    risultato = df.dropna(subset=[colonna_reale]).sort_values(by=colonna_reale, ascending=True if "min" in colonna_reale.lower() else False).head(top_n)
 
     colonne_output = ["Modello PAL", colonna_reale]
     colonne_esistenti = [col for col in colonne_output if col in df.columns]
