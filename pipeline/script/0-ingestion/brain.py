@@ -104,18 +104,19 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
     return "\n".join(risultati)
 
 @tool
-def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
+def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decrescente", top_n: int = 3) -> str:
     """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo.
-    REGOLA FONDAMENTALE: Usa SOLO i parametri 'parametro_richiesto' e 'top_n'. È severamente vietato inventare altri parametri.
+    REGOLA FONDAMENTALE: Usa SOLO i parametri 'parametro_richiesto', 'ordinamento' e 'top_n'. È severamente vietato inventare altri parametri.
     PARAMETRI:
     - 'parametro_richiesto': Inserisci ESATTAMENTE il nome della colonna incollato dall'utente.
+    - 'ordinamento': inserisci la parola 'crescente' se l'utente cerca i valori più bassi o minimi. Inserisci 'decrescente' se cerca i più alti o massimi.
     - 'top_n': il numero di modelli da restituire."""
     print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
-    print(f"[TOOL] Estrazione -> Parametro: '{parametro_richiesto}', Top: {top_n}")
+    print(f"[TOOL] Estrazione -> Parametro: '{parametro_richiesto}', Ordine: '{ordinamento}', Top: {top_n}")
 
     if df_catalogo is None:
         return "Errore: file Excel non caricato."
-    
+
     richiesta_esatta = parametro_richiesto.replace('_', ' ').strip().lower()
     colonna_reale = None
     
@@ -164,7 +165,9 @@ def cerca_catalogo_generico(parametro_richiesto: str, top_n: int = 3) -> str:
 
     df = df_catalogo.copy()
     df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
-    risultato = df.dropna(subset=[colonna_reale]).sort_values(by=colonna_reale, ascending=True if "min" in colonna_reale.lower() else False).head(top_n)
+    
+    is_ascending = True if ordinamento.strip().lower() == "crescente" else False
+    risultato = df.dropna(subset=[colonna_reale]).sort_values(by=colonna_reale, ascending=is_ascending).head(top_n)
 
     colonne_output = ["Modello PAL", colonna_reale]
     colonne_esistenti = [col for col in colonne_output if col in df.columns]
