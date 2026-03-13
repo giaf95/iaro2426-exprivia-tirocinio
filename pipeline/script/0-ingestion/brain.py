@@ -120,14 +120,22 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
     richiesta_esatta = parametro_richiesto.replace('_', ' ').strip().lower()
     colonna_reale = None
     
+    # Cerca un match esatto
     for col in colonne_catalogo:
-        if " ".join(col.split()).lower() == " ".join(richiesta_esatta.split()):
+        col_pulita_spazi = " ".join(col.split()).lower()
+        richiesta_pulita_spazi = " ".join(richiesta_esatta.split())
+        if col_pulita_spazi == richiesta_pulita_spazi:
             colonna_reale = col
             break
 
     if not colonna_reale:
         richiesta_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', parametro_richiesto).lower()
-        parole_richiesta = [p for p in richiesta_pulita.split() if len(p) > 0]
+        
+        # Array semplice senza list comprehension
+        parole_richiesta = []
+        for p in richiesta_pulita.split():
+            if len(p) > 0:
+                parole_richiesta.append(p)
         
         punteggi = {}
         for col in colonne_catalogo:
@@ -136,45 +144,93 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
             
             score = 0
             for pr in parole_richiesta:
-                if any(pr == pc or pr in pc for pc in parole_col):
-                    score += 1
+                # Controlla se la parola cercata è simile a una parola della colonna
+                for pc in parole_col:
+                    if pr == pc or pr in pc:
+                        score = score + 1
+                        break # Si ferma appena trova una corrispondenza per quella parola
+            
             if score > 0:
                 punteggi[col] = score
 
-        if not punteggi:
+        if len(punteggi) == 0:
             match_simili = difflib.get_close_matches(parametro_richiesto.replace('_', ' '), list(colonne_catalogo), n=5, cutoff=0.1)
-            opzioni = match_simili if match_simili else colonne_catalogo[:5]
-            lista_opzioni = "\n".join([f"- {opt}" for opt in opzioni])
-            return f"Dì all'utente ESATTAMENTE questo: 'Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n{lista_opzioni}'"
+            
+            if len(match_simili) > 0:
+                opzioni = match_simili
+            else:
+                opzioni = colonne_catalogo[:5]
+                
+            testo_opzioni = ""
+            for opt in opzioni:
+                testo_opzioni = testo_opzioni + "- " + opt + "\n"
+                
+            return "Dì all'utente ESATTAMENTE questo: 'Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n" + testo_opzioni + "'"
 
-        max_score = max(punteggi.values())
-        soglia = max(1, len(parole_richiesta) * 0.5)
+        max_score = 0
+        for val in punteggi.values():
+            if val > max_score:
+                max_score = val
+                
+        soglia = len(parole_richiesta) * 0.5
+        if soglia < 1:
+            soglia = 1
         
-        migliori_colonne = [col for col, score in punteggi.items() if score == max_score and score >= soglia]
-        
+        # Trova le colonne migliori con un if standard
+        migliori_colonne = []
+        for col, score in punteggi.items():
+            if score == max_score and score >= soglia:
+                migliori_colonne.append(col)
+
         if len(migliori_colonne) > 1:
-            lista_opzioni = "\n".join([f"- {opt}" for opt in migliori_colonne])
-            return f"Dì all'utente ESATTAMENTE questo: 'Il parametro è ambiguo. Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n{lista_opzioni}'"
+            testo_opzioni = ""
+            for opt in migliori_colonne:
+                testo_opzioni = testo_opzioni + "- " + opt + "\n"
+            return "Dì all'utente ESATTAMENTE questo: 'Il parametro è ambiguo. Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n" + testo_opzioni + "'"
+            
         elif len(migliori_colonne) == 1:
             colonna_reale = migliori_colonne[0]
-            print(f"[TOOL] Match parziale: '{parametro_richiesto}' -> '{colonna_reale}'")
+            print(f"[TOOL] Match parziale trovato: '{parametro_richiesto}' diventerà '{colonna_reale}'")
         else:
-            return "Nessuna colonna valida trovata. Chiedi all'utente di riformulare."
+            return "Nessuna colonna valida trovata. Chiedi all'utente di riformulare la domanda."
     else:
-        print(f"[TOOL] Match ESATTO: '{parametro_richiesto}' -> '{colonna_reale}'")
+        print(f"[TOOL] Match ESATTO trovato per '{colonna_reale}'")
 
     df = df_catalogo.copy()
-    df[colonna_reale] = df[colonna_reale].apply(lambda x: str(x).replace('.', '').replace(',', '.') if isinstance(x, str) else x)
+    
+    # Codice scolastico per pulire i numeri europei
+    def pulisci_numero(valore):
+        if isinstance(valore, str):
+            valore_senza_punti = valore.replace('.', '')
+            valore_con_punto_decimale = valore_senza_punti.replace(',', '.')
+            return valore_con_punto_decimale
+        else:
+            return valore
+            
+    df[colonna_reale] = df[colonna_reale].apply(pulisci_numero)
     df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
     
-    is_ascending = True if ordinamento.strip().lower() == "crescente" else False
-    risultato = df.dropna(subset=[colonna_reale]).sort_values(by=colonna_reale, ascending=is_ascending).head(top_n)
+    # Decidere l'ordinamento in modo esteso
+    ordinamento_minuscolo = ordinamento.strip().lower()
+    if ordinamento_minuscolo == "crescente":
+        deve_crescere = True
+    else:
+        deve_crescere = False
+        
+    risultato = df.dropna(subset=[colonna_reale])
+    risultato = risultato.sort_values(by=colonna_reale, ascending=deve_crescere)
+    risultato = risultato.head(top_n)
 
     colonne_output = ["Modello PAL", colonna_reale]
-    colonne_esistenti = [col for col in colonne_output if col in df.columns]
+    
+    # Controlla quali colonne esistono
+    colonne_esistenti = []
+    for col in colonne_output:
+        if col in df.columns:
+            colonne_esistenti.append(col)
 
-    return risultato[colonne_esistenti].to_string(index=False)
-
+    testo_finale = risultato[colonne_esistenti].to_string(index=False)
+    return testo_finale
 
 @tool
 def cerca_sito_web(query: str) -> str:
