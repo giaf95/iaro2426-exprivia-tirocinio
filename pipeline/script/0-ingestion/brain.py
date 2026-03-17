@@ -224,15 +224,12 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
     risultato = risultato.sort_values(by=colonna_reale, ascending=deve_crescere)
     risultato = risultato.head(top_n)
 
-    colonne_output = ["Modello PAL", colonna_reale]
-    
-    # Controlla quali colonne esistono
-    colonne_esistenti = []
-    for col in colonne_output:
-        if col in df.columns:
-            colonne_esistenti.append(col)
+    testo_finale = ""
+    for index, row in risultato.iterrows():
+        nome_modello = row.get("Modello PAL", "Sconosciuto")
+        valore = row.get(colonna_reale, "N/D")
+        testo_finale = testo_finale + f"- Modello: {nome_modello} | Valore: {valore}\n"
 
-    testo_finale = risultato[colonne_esistenti].to_string(index=False)
     return testo_finale
 
 @tool
