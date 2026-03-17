@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import time
 import pandas as pd
 import difflib
 import re
@@ -266,7 +267,7 @@ tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerc
 
 # configurazione LangGraph e LLM
 
-llm = ChatOllama(model="qwen2.5:3b-instruct-q4_K_M", temperature=0, num_thread=4, num_ctx=2048)
+llm = ChatOllama(model="qwen2.5:3b-instruct-q8_0", temperature=0, num_thread=4, num_ctx=2048)
 llm_with_tools = llm.bind_tools(tools)
 
 def call_model(state: AgentState):
@@ -320,9 +321,13 @@ REGOLA 4 (SCELTA NUMERICA CATALOGO): Se il tool del catalogo restituisce un elen
         cronologia_messaggi.append(HumanMessage(content=user_input))
         
         current_state = {"messages": cronologia_messaggi}
+        start_time = time.time()
         result = app.invoke(current_state, {"recursion_limit": 10})
+        end_time = time.time()
+        tempo_trascorso = end_time - start_time
         
         risposta_assistente = result['messages'][-1]
         print(f"\nAssistente: {risposta_assistente.content}")
+        print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
         
         cronologia_messaggi = result['messages']
