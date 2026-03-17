@@ -97,7 +97,7 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
         return "Errore: Database catalogo non caricato."
     
     codice_pulito = codice_modello.lower().replace("modello", "").strip()
-    docs = db_catalogo.similarity_search(parametro_richiesto, k=3, filter={"modello_id": codice_pulito})
+    docs = db_catalogo.similarity_search(parametro_richiesto, k=5, filter={"modello_id": codice_pulito})
     
     if not docs:
         return "Nessun dato trovato nel catalogo per questo modello specifico."
@@ -241,7 +241,7 @@ def cerca_sito_web(query: str) -> str:
     if not db_web:
         return "Errore: Database sito non caricato."
         
-    docs = db_web.similarity_search(query, k=2)
+    docs = db_web.similarity_search(query, k=5)
     testo_finale = "\n".join([d.page_content for d in docs])
     print(f"[TOOL] Estratti {len(docs)} documenti.")
     return testo_finale
@@ -257,7 +257,7 @@ def cerca_manuali(query: str) -> str:
     if not db_manuali:
         return "Errore: Database manuali non caricato."
         
-    docs = db_manuali.similarity_search(query, k=2)
+    docs = db_manuali.similarity_search(query, k=5)
     testo_finale = "\n".join([d.page_content for d in docs])
     print(f"[TOOL] Estratti {len(docs)} documenti.")
     return testo_finale
@@ -305,12 +305,11 @@ app = workflow.compile()
 if __name__ == "__main__":
     print("\nChatbot Tool-Based avviato. Scrivi 'esci' per terminare.")
     
-    istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico preciso e analitico.
-REGOLA 1: Usa sempre gli strumenti a tua disposizione prima di rispondere.
-REGOLA 2: Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool.
-REGOLA 3: Per classifiche o valori massimi/minimi, usa sempre 'cerca_catalogo_generico'.
-REGOLA 4 (IL COPIA E INCOLLA): Se il tool ti dice di far copiare e incollare un'opzione, riporta il messaggio all'utente.
-REGOLA 5 (LA TUA REAZIONE): Quando l'utente incolla l'opzione, DEVI chiamare immediatamente 'cerca_catalogo_generico' inserendo TUTTO il testo dell'utente dentro 'parametro_richiesto'. NON inserire la parola 'modello' e NON inventare parametri aggiuntivi.""")
+    istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione 3 fonti: Sito Web, Manuali e Catalogo.
+REGOLA 1: Rispondi ESCLUSIVAMENTE basandoti sul testo estratto dai tool. Se non trovi nulla, dillo chiaramente e fermati.
+REGOLA 2 (IL FLUSSO DISCORSIVO): Quando usi 'cerca_manuali' o 'cerca_sito_web', leggi il testo estratto e formula una risposta testuale chiara, completa e riassuntiva per l'utente. NON devi chiedere codici modello o proporre ricerche nel catalogo a meno che l'utente non lo chieda esplicitamente. Rispondi alla domanda e concludi.
+REGOLA 3 (IL FLUSSO MATEMATICO): Usa i tool del catalogo SOLO per classifiche, grandezze fisiche, massimi/minimi o se l'utente chiede i dati di un modello esatto.
+REGOLA 4 (SCELTA NUMERICA CATALOGO): Se il tool del catalogo restituisce un elenco numerato, mostralo all'utente. Quando l'utente risponde con un numero, invoca di nuovo il tool inserendo in 'parametro_richiesto' IL TESTO COMPLETO corrispondente a quel numero.""")
     cronologia_messaggi = [istruzioni_di_sistema]
     
     while True:
