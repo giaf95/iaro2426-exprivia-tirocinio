@@ -1,10 +1,8 @@
 import os
 import sqlite3
-import tkinter as tk
 import pandas as pd
 import difflib
 import re
-from tkinter import filedialog
 from typing import Annotated, List, TypedDict
 import operator
 from langgraph.graph import StateGraph, END
@@ -32,23 +30,22 @@ def get_collection_names(db_path: str) -> List[str]:
     except Exception:
         return []
 
-def select_and_load_db(kb_name: str, embeddings) -> Chroma:
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes('-topmost', True)
+def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
+
+    percorso_assoluto = os.path.join(pipeline_dir, "data", "2-processing", nome_cartella_db)
     
-    path = filedialog.askdirectory(title=f"DB {kb_name.upper()}")
-    root.destroy()
-    
-    if not path:
+    if not os.path.exists(percorso_assoluto):
+        print(f"Errore: Il percorso {percorso_assoluto} non esiste.")
         return None
         
-    collections = get_collection_names(path)
+    collections = get_collection_names(percorso_assoluto)
     db_scelto = None
     
     for col in collections:
         db_temp = Chroma(
-            persist_directory=path,
+            persist_directory=percorso_assoluto,
             embedding_function=embeddings,
             collection_name=col
         )
@@ -63,9 +60,9 @@ def select_and_load_db(kb_name: str, embeddings) -> Chroma:
 print("Inizializzazione sistema in corso...")
 embeddings_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-db_catalogo = select_and_load_db("catalogo", embeddings_model)
-db_web = select_and_load_db("sito_web", embeddings_model)
-db_manuali = select_and_load_db("manuali", embeddings_model)
+db_catalogo = carica_database("chroma_db_catalogo", "catalogo", embeddings_model)
+db_web = carica_database("chroma_db_zoppellaro", "sito_web", embeddings_model)
+db_manuali = carica_database("chroma_db_knowledge_base_pdf", "manuali", embeddings_model)
 
 try:
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -266,7 +263,7 @@ tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerc
 
 # configurazione LangGraph e LLM
 
-llm = ChatOllama(model="qwen2.5:3b", temperature=0)
+llm = ChatOllama(model="qwen2.5:3b-instruct-q4_K_M", temperature=0, num_thread=4, num_ctx=2048)
 llm_with_tools = llm.bind_tools(tools)
 
 def call_model(state: AgentState):
