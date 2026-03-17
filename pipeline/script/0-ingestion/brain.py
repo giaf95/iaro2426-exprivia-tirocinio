@@ -68,8 +68,14 @@ try:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
     excel_path = os.path.join(pipeline_dir, "data", "1-preprocessing", "catalogo.xlsx")
-    df_catalogo = pd.read_excel(excel_path)
-    colonne_catalogo = [col for col in df_catalogo.columns if not str(col).strip().lower().endswith("unit")]
+    df_catalogo = pd.read_excel(excel_path, thousands='.', decimal=',')
+
+    colonne_catalogo = []
+    for col in df_catalogo.columns:
+        colonna_stringa = str(col).strip().lower()
+        if not colonna_stringa.endswith("unit"):
+            colonne_catalogo.append(col)
+            
 except Exception:
     df_catalogo = None
     colonne_catalogo = []
