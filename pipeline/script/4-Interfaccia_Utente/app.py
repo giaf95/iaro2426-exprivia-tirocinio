@@ -1,4 +1,9 @@
+import sys
+import os
 import streamlit as st
+
+percorso_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.append(percorso_root)
 from prototype.davide.prova import elabora_richiesta
 
 st.set_page_config(page_title="Zoppellaro AI", layout="wide", initial_sidebar_state="expanded")
