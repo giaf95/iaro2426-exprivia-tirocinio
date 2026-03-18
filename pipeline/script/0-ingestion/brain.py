@@ -17,7 +17,10 @@ from langchain_chroma import Chroma
 class AgentState(TypedDict):
     messages: Annotated[List, operator.add]
 
+#1 DEFINIZIONE FUNZIONI DI SUPPORTO
+
 def get_collection_names(db_path: str) -> List[str]:
+    # va a leggere fisicamente il file sqlite di chroma per estrarre le tabelle
     sqlite_path = os.path.join(db_path, "chroma.sqlite3")
     if not os.path.exists(sqlite_path):
         return []
@@ -32,6 +35,7 @@ def get_collection_names(db_path: str) -> List[str]:
         return []
 
 def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
+    # costruisce il percorso assoluto
     script_dir = os.path.dirname(os.path.abspath(__file__))
     pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
 
@@ -58,31 +62,7 @@ def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
             
     return db_scelto
 
-print("Inizializzazione sistema in corso...")
-embeddings_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-
-db_catalogo = carica_database("chroma_db_catalogo", "catalogo", embeddings_model)
-db_web = carica_database("chroma_db_zoppellaro", "sito_web", embeddings_model)
-db_manuali = carica_database("chroma_db_knowledge_base_pdf", "manuali", embeddings_model)
-
-try:
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
-    excel_path = os.path.join(pipeline_dir, "data", "1-preprocessing", "catalogo.xlsx")
-    df_catalogo = pd.read_excel(excel_path, thousands='.', decimal=',')
-
-    colonne_catalogo = []
-    for col in df_catalogo.columns:
-        colonna_stringa = str(col).strip().lower()
-        if not colonna_stringa.endswith("unit"):
-            colonne_catalogo.append(col)
-            
-except Exception:
-    df_catalogo = None
-    colonne_catalogo = []
-
-
-# definizione dei tool
+#2 DEFINIZIONE DEI TOOL
 
 @tool
 def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> str:
@@ -98,6 +78,7 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
         return "Errore: Database catalogo non caricato."
     
     codice_pulito = codice_modello.lower().replace("modello", "").strip()
+    # filtra la ricerca solo per i documenti che hanno questo esatto modello nei metadati
     docs = db_catalogo.similarity_search(parametro_richiesto, k=5, filter={"modello_id": codice_pulito})
     
     if not docs:
@@ -121,10 +102,10 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
     if df_catalogo is None:
         return "Errore: file Excel non caricato."
 
+    # rimuove i finti trattini bassi che l'llm inventa spesso
     richiesta_esatta = parametro_richiesto.replace('_', ' ').strip().lower()
     colonna_reale = None
     
-    # Cerca un match esatto
     for col in colonne_catalogo:
         col_pulita_spazi = " ".join(col.split()).lower()
         richiesta_pulita_spazi = " ".join(richiesta_esatta.split())
@@ -132,15 +113,15 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
             colonna_reale = col
             break
 
+    # piano b se la colonna non matcha esattamente
     if not colonna_reale:
         richiesta_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', parametro_richiesto).lower()
-        
-        # Array semplice senza list comprehension
         parole_richiesta = []
         for p in richiesta_pulita.split():
             if len(p) > 0:
                 parole_richiesta.append(p)
         
+        # assegna un punteggio ad ogni colonna in base a quante parole combaciano
         punteggi = {}
         for col in colonne_catalogo:
             col_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', col).lower()
@@ -148,11 +129,9 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
             
             score = 0
             for pr in parole_richiesta:
-                # Controlla se la parola cercata è simile a una parola della colonna
                 for pc in parole_col:
                     if pr == pc or pr in pc:
                         score = score + 1
-                        break # Si ferma appena trova una corrispondenza per quella parola
             
             if score > 0:
                 punteggi[col] = score
@@ -180,12 +159,12 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
         if soglia < 1:
             soglia = 1
         
-        # Trova le colonne migliori con un if standard
         migliori_colonne = []
         for col, score in punteggi.items():
             if score == max_score and score >= soglia:
                 migliori_colonne.append(col)
 
+        # se c'e un pareggio chiede aiuto all'utente
         if len(migliori_colonne) > 1:
             testo_opzioni = ""
             for opt in migliori_colonne:
@@ -202,7 +181,7 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
 
     df = df_catalogo.copy()
     
-    # Codice scolastico per pulire i numeri europei
+    # fix artigianale per convertire i numeri col punto stile italiano
     def pulisci_numero(valore):
         if isinstance(valore, str):
             valore_senza_punti = valore.replace('.', '')
@@ -214,7 +193,7 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
     df[colonna_reale] = df[colonna_reale].apply(pulisci_numero)
     df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
     
-    # Decidere l'ordinamento in modo esteso
+    # capisce come fare la classifica in base al parametro dell'llm
     ordinamento_minuscolo = ordinamento.strip().lower()
     if ordinamento_minuscolo == "crescente":
         deve_crescere = True
@@ -225,6 +204,7 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
     risultato = risultato.sort_values(by=colonna_reale, ascending=deve_crescere)
     risultato = risultato.head(top_n)
 
+    # crea l'elenco testuale per evitare che l'llm si confonda leggendo una tabella
     testo_finale = ""
     for index, row in risultato.iterrows():
         nome_modello = row.get("Modello PAL", "Sconosciuto")
@@ -263,19 +243,14 @@ def cerca_manuali(query: str) -> str:
     print(f"[TOOL] Estratti {len(docs)} documenti.")
     return testo_finale
 
-tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali]
-
-# configurazione LangGraph e LLM
-
-llm = ChatOllama(model="qwen2.5:3b-instruct-q8_0", temperature=0, num_thread=4, num_ctx=2048)
-llm_with_tools = llm.bind_tools(tools)
+#3 FUNZIONI DI LANGGRAPH
 
 def call_model(state: AgentState):
-    print("\nL'intelligenza artificiale sta analizzando i dati e generando la risposta...")
+    print("\nL'intelligenza artificiale sta analizzando i dati e generating la risposta...")
     messages = state["messages"]
     response = llm_with_tools.invoke(messages)
     
-    # debug
+    # printa a schermo le intenzioni dell'ai per capire cosa sta combinando
     if response.tool_calls:
         tool_name = response.tool_calls[0].get('name', 'Sconosciuto')
         tool_args = response.tool_calls[0].get('args', {})
@@ -283,13 +258,49 @@ def call_model(state: AgentState):
     
     return {"messages": [response]}
 
-tool_node = ToolNode(tools)
-
 def should_continue(state: AgentState) -> str:
+    # controlla se l'ai ha deciso di usare un tool o se ha finito
     last_message = state["messages"][-1]
     if last_message.tool_calls:
         return "tools"
     return "end"
+
+
+#4 INIZIALIZZAZIONE E SETUP
+
+print("Inizializzazione sistema in corso...")
+embeddings_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
+db_catalogo = carica_database("chroma_db_catalogo", "catalogo", embeddings_model)
+db_web = carica_database("chroma_db_zoppellaro", "sito_web", embeddings_model)
+db_manuali = carica_database("chroma_db_knowledge_base_pdf", "manuali", embeddings_model)
+
+try:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
+    excel_path = os.path.join(pipeline_dir, "data", "1-preprocessing", "catalogo.xlsx")
+    # i parametri in read_excel risolvono il problema dei punti usati come migliaia
+    df_catalogo = pd.read_excel(excel_path, thousands='.', decimal=',')
+
+    # pulisce le colonne per nascondere quelle inutili con le unita di misura
+    colonne_catalogo = []
+    for col in df_catalogo.columns:
+        colonna_stringa = str(col).strip().lower()
+        if not colonna_stringa.endswith("unit"):
+            colonne_catalogo.append(col)
+            
+except Exception:
+    df_catalogo = None
+    colonne_catalogo = []
+
+tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali]
+
+# configurazione LangGraph e LLM
+# parametri aggiunti per limitare i consumi della cpu e della ram
+llm = ChatOllama(model="qwen2.5:3b-instruct-q8_0", temperature=0, num_thread=4, num_ctx=2048)
+llm_with_tools = llm.bind_tools(tools)
+
+tool_node = ToolNode(tools)
 
 workflow = StateGraph(AgentState)
 workflow.add_node("agent", call_model)
@@ -301,7 +312,7 @@ workflow.add_edge("tools", "agent")
 
 app = workflow.compile()
 
-# esecuzione chatbot
+#5 ESECUZIONE CHATBOT
 
 if __name__ == "__main__":
     print("\nChatbot Tool-Based avviato. Scrivi 'esci' per terminare.")
@@ -312,6 +323,8 @@ REGOLA 1 (DIVIETO DI ALLUCINAZIONE): È SEVERAMENTE VIETATO rispondere usando la
 REGOLA 2 (VERIFICA DEL CONTESTO): Quando usi 'cerca_manuali' o 'cerca_sito_web', leggi il testo estratto. Se il testo NON contiene la risposta esatta alla domanda dell'utente (ad esempio, trovi testi commerciali ma l'utente chiedeva una procedura tecnica), NON INVENTARE LA RISPOSTA. Devi dire: "Non ho trovato le informazioni specifiche nei documenti a mia disposizione".
 REGOLA 3 (IL FLUSSO DISCORSIVO): Se trovi le informazioni, formula una risposta chiara e riassuntiva. NON chiedere codici modello se non richiesto.
 REGOLA 4 (IL FLUSSO MATEMATICO): Usa i tool del catalogo SOLO per classifiche o grandezze fisiche. Se il tool restituisce un elenco numerato, mostralo. Se l'utente sceglie un numero, invoca il tool col testo completo dell'opzione.""")
+    
+    # lista che tiene a mente le vecchie risposte per dare memoria alla chat
     cronologia_messaggi = [istruzioni_di_sistema]
     
     while True:
@@ -322,6 +335,7 @@ REGOLA 4 (IL FLUSSO MATEMATICO): Usa i tool del catalogo SOLO per classifiche o 
         cronologia_messaggi.append(HumanMessage(content=user_input))
         
         current_state = {"messages": cronologia_messaggi}
+        # attiva il cronometro prima che l'llm inizi a pensare
         start_time = time.time()
         result = app.invoke(current_state, {"recursion_limit": 10})
         end_time = time.time()
