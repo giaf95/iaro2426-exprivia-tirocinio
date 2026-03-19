@@ -433,7 +433,6 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
     global memoria_conversazioni
     
     if chat_id not in memoria_conversazioni:
-        # utilizziamo il tuo prompt blindato più recente, non quello vecchio del collega
         istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione 3 fonti: Sito Web, Manuali e Catalogo.
 REGOLA 0 (LINGUA OBBLIGATORIA): DEVI rispondere SEMPRE E SOLO in lingua ITALIANA. È severamente vietato utilizzare inglese, spagnolo, portoghese o altre lingue.
 REGOLA 1 (DIVIETO DI ALLUCINAZIONE): È SEVERAMENTE VIETATO rispondere usando la tua memoria interna. Devi SEMPRE invocare uno dei tool PRIMA di rispondere.
@@ -466,7 +465,7 @@ REGOLA 4 (IL FLUSSO MATEMATICO): Usa i tool del catalogo SOLO per classifiche o 
             for tool in msg.tool_calls:
                 if tool['name'] not in tool_usati:
                     tool_usati.append(tool['name'])
-
+    #aggiunge alla memoria SOLO la risposta finale, senza il ragionamento dietro
     memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
                     
     return {
