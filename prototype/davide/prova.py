@@ -68,7 +68,7 @@ db_manuali = carica_database("chroma_db_knowledge_base_pdf", "manuali", embeddin
 try:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
-    excel_path = os.path.join(pipeline_dir, "pipeline", "data", "1-preprocessing", "catalogo.xlsx")
+    excel_path = os.path.join(pipeline_dir, "pipeline", "1-preprocessing", "catalogo.xlsx")
     df_catalogo = pd.read_excel(excel_path, thousands='.', decimal=',')
 
     colonne_catalogo = []

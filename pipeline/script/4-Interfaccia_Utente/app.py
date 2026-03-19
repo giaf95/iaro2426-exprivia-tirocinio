@@ -19,7 +19,7 @@ if st.session_state.user_id not in st.session_state.memoria_utenti:
         "tutte_le_chat": {"Chat 1": []},
         "chat_attiva": "Chat 1",
         "contatore_chat": 1
-    }
+    }   
 
 dati_utente = st.session_state.memoria_utenti[st.session_state.user_id]
 
