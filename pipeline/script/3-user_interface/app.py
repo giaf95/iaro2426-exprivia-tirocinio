@@ -11,7 +11,8 @@ cartella_processing = os.path.join(cartella_script, '2-processing')
 sys.path.append(cartella_processing)
 from brain import elabora_richiesta #type: ignore
 
-DB_FILE = "database_chat.db"
+cartella_pipeline = os.path.abspath(os.path.join(cartella_script, '..'))
+DB_FILE = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'database_chat.db')
 
 def init_db():
     """Crea la tabella nel database se non esiste già."""
