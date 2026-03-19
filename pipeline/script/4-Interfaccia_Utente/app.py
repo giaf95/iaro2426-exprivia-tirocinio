@@ -1,4 +1,9 @@
+import sys
+import os
 import streamlit as st
+
+percorso_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.append(percorso_root)
 from prototype.davide.prova import elabora_richiesta
 
 st.set_page_config(page_title="Zoppellaro AI", layout="wide", initial_sidebar_state="expanded")
@@ -14,7 +19,7 @@ if st.session_state.user_id not in st.session_state.memoria_utenti:
         "tutte_le_chat": {"Chat 1": []},
         "chat_attiva": "Chat 1",
         "contatore_chat": 1
-    }
+    }   
 
 dati_utente = st.session_state.memoria_utenti[st.session_state.user_id]
 
