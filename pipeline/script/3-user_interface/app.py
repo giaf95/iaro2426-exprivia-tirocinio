@@ -9,7 +9,7 @@ cartella_corrente = os.path.dirname(os.path.abspath(__file__))
 cartella_script = os.path.abspath(os.path.join(cartella_corrente, '..'))
 cartella_processing = os.path.join(cartella_script, '2-processing')
 sys.path.append(cartella_processing)
-from brain import elabora_richiesta
+from brain import elabora_richiesta #type: ignore
 
 DB_FILE = "database_chat.db"
 
