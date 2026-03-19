@@ -4,9 +4,12 @@ import json
 import sqlite3
 import streamlit as st
 
-percorso_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-sys.path.append(percorso_root)
-from prototype.davide.prova import elabora_richiesta
+#importazione di brain
+cartella_corrente = os.path.dirname(os.path.abspath(__file__))
+cartella_script = os.path.abspath(os.path.join(cartella_corrente, '..'))
+cartella_processing = os.path.join(cartella_script, '2-processing')
+sys.path.append(cartella_processing)
+from brain import elabora_richiesta
 
 DB_FILE = "database_chat.db"
 
@@ -122,7 +125,12 @@ if user_query:
     with st.chat_message("assistant"):
         with st.spinner("Il motore AI sta elaborando la richiesta..."):
             try:
-                response = elabora_richiesta(user_query)
+                #crea un ID univoco nome utente + nome chat
+                id_chat_corrente = f"{st.session_state.user_id}_{dati_utente['chat_attiva']}"
+                
+                #passa l'ID a brain
+                response = elabora_richiesta(user_query, chat_id=id_chat_corrente)
+                
                 st.write(response["testo"])
                 
                 if response["azioni"]:
