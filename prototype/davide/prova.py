@@ -213,7 +213,6 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
 
     return testo_finale
 
-
 @tool
 def cerca_sito_web(query: str) -> str:
     """Usa questo tool per cercare procedure passo-passo, guide all'installazione, troubleshooting e codici di errore.
@@ -315,41 +314,35 @@ app = workflow.compile()
 
 #5 ESECUZIONE CHATBOT
 
-memoria_conversazioni = {}
-
-def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
-    global memoria_conversazioni
+if __name__ == "__main__":
+    print("\nChatbot Tool-Based avviato. Scrivi 'esci' per terminare.")
     
-    # Se è una chat nuova, diamo al bot le nuove istruzioni aggiornate
-    if chat_id not in memoria_conversazioni:
-        istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione 3 fonti: Sito Web, Manuali e Catalogo.
+    istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione 3 fonti: Sito Web, Manuali e Catalogo.
 REGOLA 0 (LINGUA OBBLIGATORIA): DEVI rispondere SEMPRE E SOLO in lingua ITALIANA. È severamente vietato utilizzare inglese, spagnolo, portoghese o altre lingue.
 REGOLA 1 (DIVIETO DI ALLUCINAZIONE): È SEVERAMENTE VIETATO rispondere usando la tua memoria interna. Devi SEMPRE invocare uno dei tool PRIMA di rispondere.
 REGOLA 2 (VERIFICA DEL CONTESTO): Quando usi 'cerca_manuali' o 'cerca_sito_web', leggi il testo estratto. Se il testo NON contiene la risposta esatta alla domanda dell'utente (ad esempio, trovi testi commerciali ma l'utente chiedeva una procedura tecnica), NON INVENTARE LA RISPOSTA. Devi dire: "Non ho trovato le informazioni specifiche nei documenti a mia disposizione".
 REGOLA 3 (IL FLUSSO DISCORSIVO): Se trovi le informazioni, formula una risposta chiara e riassuntiva. NON chiedere codici modello se non richiesto.
 REGOLA 4 (IL FLUSSO MATEMATICO): Usa i tool del catalogo SOLO per classifiche o grandezze fisiche. Se il tool restituisce un elenco numerato, mostralo. Se l'utente sceglie un numero, invoca il tool col testo completo dell'opzione.""")
-        memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
+    
+    # lista che tiene a mente le vecchie risposte per dare memoria alla chat
+    cronologia_messaggi = [istruzioni_di_sistema]
+    
+    while True:
+        user_input = input("\nUtente: ")
+        if user_input.lower() == 'esci':
+            break
+            
+        cronologia_messaggi.append(HumanMessage(content=user_input))
         
-    memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
-    
-    current_state = {"messages": memoria_conversazioni[chat_id]}
-    
-    try:
+        current_state = {"messages": cronologia_messaggi}
+        # attiva il cronometro prima che l'llm inizi a pensare
+        start_time = time.time()
         result = app.invoke(current_state, {"recursion_limit": 10})
-    except Exception as e:
-        return {"testo": f"Si è verificato un errore nel motore: {e}", "azioni": []}
+        end_time = time.time()
+        tempo_trascorso = end_time - start_time
         
-    memoria_conversazioni[chat_id] = result['messages']
-    risposta_assistente = result['messages'][-1].content
-    
-    tool_usati = []
-    for msg in result['messages']:
-        if hasattr(msg, 'tool_calls') and msg.tool_calls:
-            for tool in msg.tool_calls:
-                if tool['name'] not in tool_usati:
-                    tool_usati.append(tool['name'])
-                    
-    return {
-        "testo": risposta_assistente,
-        "azioni": tool_usati
-    }
+        risposta_assistente = result['messages'][-1]
+        print(f"\nAssistente: {risposta_assistente.content}")
+        print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
+        
+        cronologia_messaggi = result['messages']
