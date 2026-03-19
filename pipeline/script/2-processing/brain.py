@@ -11,6 +11,7 @@ from langchain_ollama import ChatOllama
 from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 
@@ -353,7 +354,7 @@ REGOLA 4 (IL FLUSSO MATEMATICO): Usa i tool del catalogo SOLO per classifiche o 
             for tool in msg.tool_calls:
                 if tool['name'] not in tool_usati:
                     tool_usati.append(tool['name'])
-    #aggiunge alla memoria SOLO la risposta finale, senza il ragionamento dietro
+
     memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
                     
     return {
