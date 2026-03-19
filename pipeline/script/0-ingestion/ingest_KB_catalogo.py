@@ -102,7 +102,7 @@ if __name__ == "__main__":
     
     try:
         print("caricamento excel...")
-        excel_path = "CATALOGO_FINALE_UNITA.xlsx"
+        excel_path = r"C:/Users/PC_A87/Desktop/Carricamento Progetti GIT/pipeline/data/1-preprocessing/catalogo.xlsx"
         if not os.path.exists(excel_path):
             raise FileNotFoundError(f"file non trovato: {excel_path}")
         
