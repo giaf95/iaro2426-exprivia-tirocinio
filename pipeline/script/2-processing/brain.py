@@ -285,7 +285,10 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, delta_t: flo
     - delta_t: differenza di temperatura tra esterno e interno in gradi (es. fuori 35, dentro 20 = delta_t di 15).
     - tipo_locale: es. 'discoteca', 'ufficio', 'residenziale', 'palestra'."""
     print(f"\n[TOOL] Esecuzione CALCOLA_FABBISOGNO_TERMICO")
-    print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} persone, dT {delta_t}°, locale: {tipo_locale}")
+    
+    # faccio calcolare il Delta T a Python, non all'AI
+    delta_t = abs(temp_esterna - temp_interna)
+    print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} persone, T.Est: {temp_esterna}°, T.Int: {temp_interna}° (Delta: {delta_t}°), locale: {tipo_locale}")
 
     # 1. Carico Base Strutturale (W/mq)
     w_mq = 100 # Default per residenziale/uffici
