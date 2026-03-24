@@ -244,6 +244,45 @@ def cerca_manuali(query: str) -> str:
     print(f"[TOOL] Estratti {len(docs)} documenti.")
     return testo_finale
 
+@tool
+def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, delta_t: float, tipo_locale: str) -> str:
+    """Usa questo tool per calcolare i kW (potenza frigorifera/termica) necessari per condizionare una stanza.
+    Se l'utente non fornisce questi dati, CHIEDILI prima di usare il tool.
+    PARAMETRI:
+    - area_mq: metri quadri della stanza (es. 30).
+    - numero_persone: quante persone occupano la stanza (es. 50).
+    - delta_t: differenza di temperatura tra esterno e interno in gradi (es. fuori 35, dentro 20 = delta_t di 15).
+    - tipo_locale: es. 'discoteca', 'ufficio', 'residenziale', 'palestra'."""
+    print(f"\n[TOOL] Esecuzione CALCOLA_FABBISOGNO_TERMICO")
+    print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} persone, dT {delta_t}°, locale: {tipo_locale}")
+
+    # 1. Carico Base Strutturale (W/mq)
+    w_mq = 100 # Default per residenziale/uffici
+    tipo_locale_low = tipo_locale.lower()
+    if "discoteca" in tipo_locale_low or "palestra" in tipo_locale_low or "industria" in tipo_locale_low:
+        w_mq = 150
+
+    carico_base = area_mq * w_mq
+
+    # 2. Carico Persone (W/persona) - a riposo emettono meno, in discoteca/palestra emettono molto calore
+    w_persona = 100
+    if "discoteca" in tipo_locale_low or "palestra" in tipo_locale_low:
+        w_persona = 250
+
+    carico_persone = numero_persone * w_persona
+
+    # 3. Moltiplicatore Delta T (aumenta del 5% per ogni grado di sbalzo termico oltre i 10°C)
+    moltiplicatore_delta = 1.0
+    if delta_t > 10:
+        gradi_extra = delta_t - 10
+        moltiplicatore_delta = 1.0 + (gradi_extra * 0.05)
+
+    # Calcolo Finale
+    fabbisogno_totale_watt = (carico_base + carico_persone) * moltiplicatore_delta
+    fabbisogno_kw = fabbisogno_totale_watt / 1000
+
+    return f"Calcolo completato. Il fabbisogno termico stimato per questo {tipo_locale} è di {fabbisogno_kw:.2f} kW. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico' per cercare i modelli con una 'Potenza Frigorifera' (o parametro simile) uguale o leggermente superiore a {fabbisogno_kw:.2f} kW."
+
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
 def call_model(state: AgentState):
@@ -273,14 +312,14 @@ memoria_conversazioni = {}
 def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
     global memoria_conversazioni
     
-    if chat_id not in memoria_conversazioni:
-        # utilizziamo il tuo prompt blindato più recente, non quello vecchio del collega
-        istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione 3 fonti: Sito Web, Manuali e Catalogo.
-REGOLA 0 (LINGUA OBBLIGATORIA): DEVI rispondere SEMPRE E SOLO in lingua ITALIANA. È severamente vietato utilizzare inglese, spagnolo, portoghese o altre lingue.
-REGOLA 1 (DIVIETO DI ALLUCINAZIONE): È SEVERAMENTE VIETATO rispondere usando la tua memoria interna. Devi SEMPRE invocare uno dei tool PRIMA di rispondere.
-REGOLA 2 (VERIFICA DEL CONTESTO): Quando usi 'cerca_manuali' o 'cerca_sito_web', leggi il testo estratto. Se il testo NON contiene la risposta esatta alla domanda dell'utente (ad esempio, trovi testi commerciali ma l'utente chiedeva una procedura tecnica), NON INVENTARE LA RISPOSTA. Devi dire: "Non ho trovato le informazioni specifiche nei documenti a mia disposizione".
-REGOLA 3 (IL FLUSSO DISCORSIVO): Se trovi le informazioni, formula una risposta chiara e riassuntiva. NON chiedere codici modello se non richiesto.
-REGOLA 4 (IL FLUSSO MATEMATICO): Usa i tool del catalogo SOLO per classifiche o grandezze fisiche. Se il tool restituisce un elenco numerato, mostralo. Se l'utente sceglie un numero, invoca il tool col testo completo dell'opzione.""")
+    if chat_id not in memoria_conversazioni:# utilizziamo il tuo prompt blindato più recente, non quello vecchio del collega
+        istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione fonti documentali e un Calcolatore Termotecnico.
+REGOLA 0 (LINGUA OBBLIGATORIA): DEVI rispondere SEMPRE E SOLO in lingua ITALIANA.
+REGOLA 1 (DIVIETO DI ALLUCINAZIONE): Devi SEMPRE invocare uno dei tool PRIMA di rispondere. Non usare calcoli a mente o la tua memoria interna.
+REGOLA 2 (DOMANDE MIRATE E PROATTIVITÀ): Se l'utente ti chiede di condizionare un ambiente ma non ti fornisce i kW, DEVI usare 'calcola_fabbisogno_termico'. Se per usare questo tool ti mancano dei dati (metri quadri, numero di persone, temperature o tipo di locale), NON INVENTARLI. Fermati e chiedi esplicitamente all'utente i dati mancanti.
+REGOLA 3 (FLUSSO A CASCATA): Una volta calcolati i kW con il tool, devi eseguire un'altra azione: usa 'cerca_catalogo_generico' per cercare nel catalogo un modello che abbia una potenza adatta.
+REGOLA 4 (VERIFICA DEL CONTESTO): Quando usi i tool documentali ('cerca_manuali' o 'cerca_sito_web'), leggi il testo estratto. Se non trovi la risposta, ammettilo.
+REGOLA 5 (SCELTA NUMERICA CATALOGO): Se il catalogo restituisce un elenco numerato per disambiguare le colonne, mostralo all'utente.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
         
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
@@ -340,7 +379,7 @@ except Exception:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali]
+tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
