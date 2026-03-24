@@ -306,7 +306,7 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, delta_t: flo
     fabbisogno_totale_watt = (carico_base + carico_persone) * moltiplicatore_delta
     fabbisogno_kw = fabbisogno_totale_watt / 1000
 
-    return f"Calcolo completato. Il fabbisogno termico stimato per questo {tipo_locale} è di {fabbisogno_kw:.2f} kW. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico' per cercare i modelli con una 'Potenza Frigorifera' (o parametro simile) uguale o leggermente superiore a {fabbisogno_kw:.2f} kW."
+    return f"Calcolo completato: {fabbisogno_kw:.2f} kW. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Inserisci come parametro_richiesto ESATTAMENTE 'Potenza frigorifera totale macchina' e inserisci {fabbisogno_kw:.2f} nel campo 'valore_target'."
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
