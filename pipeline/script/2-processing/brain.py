@@ -67,11 +67,11 @@ def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
 #2 DEFINIZIONE DEI TOOL
 
 @tool
-def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
-    """Usa questo tool SEMPRE e SOLO quando l'utente nomina un MODELLO SPECIFICO (es. '091-051' o '061-035').
-    ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - modello: estrai SOLO il codice esatto (es. '091-051').
-    - parametro: la grandezza fisica da cercare (es. 'Portata Massima Mandata')."""
+def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> str:
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente fornisce un CODICE ALFANUMERICO ESATTO di un modello (es. '061-035') e vuole sapere un suo dato tecnico.
+    ISTRUZIONI: 
+    1. 'codice_modello': estrai SOLO il codice esatto (es. '061-035').
+    2. 'parametro_richiesto': la grandezza fisica da cercare."""
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_SPECIFICO")
     print(f"[TOOL] Ricerca chirurgica -> Modello: '{modello}' | Parametro: '{parametro}'")
     
@@ -79,7 +79,7 @@ def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
         return "Errore: file Excel non caricato."
     
     # pulizia del codice cercato
-    codice_pulito = modello.upper().replace("MODELLO", "").strip()
+    codice_pulito = codice_modello.upper().replace("MODELLO", "").strip()
     
     # cerca la riga esatta nel DataFrame Pandas
     df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
@@ -87,16 +87,12 @@ def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
     if df_modello.empty:
         return f"Modello {codice_pulito} non trovato nel catalogo Excel."
         
-    # salvagente anti-crash se l'AI dimentica il parametro
-    if parametro == "Tutti" or parametro.strip() == "":
-         return f"Hai trovato il modello {codice_pulito}, ma non hai estratto il parametro richiesto! Chiedi all'utente cosa vuole sapere di preciso (es. dimensioni, peso, portata)."
-         
     # cerca le colonne che contengono la parola richiesta
-    richiesta_pulita = parametro.lower().strip()
+    richiesta_pulita = parametro_richiesto.lower().strip()
     colonne_trovate = [col for col in colonne_catalogo if richiesta_pulita in str(col).lower()]
     
     if not colonne_trovate:
-         return f"Il parametro '{parametro}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
+         return f"Il parametro '{parametro_richiesto}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
          
     # estrae tutti i parametri trovati
     risultati = []
@@ -756,7 +752,7 @@ Se manca ANCHE SOLO UNO di questi dati, FERMATI ASSOLUTAMENTE. NON chiamare il t
 REGOLA 3 (FLUSSO A CASCATA): Una volta calcolati i kW con il tool, devi eseguire un'altra azione: usa 'cerca_catalogo_generico' per cercare nel catalogo un modello che abbia una potenza adatta.
 REGOLA 4 (VERIFICA DEL CONTESTO): Quando usi i tool documentali ('cerca_manuali' o 'cerca_sito_web'), leggi il testo estratto. Se non trovi la risposta, ammettilo.
 REGOLA 5 (SCELTA NUMERICA CATALOGO): Se il catalogo restituisce un elenco numerato, mostralo all'utente.
-REGOLA 6 (FOCUS ANTI-LOOP): Concentrati ESCLUSIVAMENTE sull'ultima domanda dell'utente. NON richiamare MAI 'calcola_fabbisogno_termico' o 'cerca_catalogo_generico' se i calcoli sono già stati fatti, a meno che l'utente non cambi i metri quadri. Se l'utente chiede un dettaglio di un modello appena trovato, cambia strumento e usa 'cerca_catalogo_specifico'. Se chiede info su manutenzione, installazione o filtri, usa 'cerca_sito_web' o 'cerca_manuali'.""")
+REGOLA 6 (FOCUS ANTI-LOOP E AMNESIA): Concentrati ESCLUSIVAMENTE sull'ultima domanda dell'utente. Se nella cronologia hai GIÀ calcolato i kW e proposto dei modelli, NON DEVI MAI PIÙ richiamare 'calcola_fabbisogno_termico' o 'cerca_catalogo_generico' per quella stanza. Usa SOLO 'cerca_catalogo_specifico' per approfondire i dati di un modello, o i tool documentali per argomenti generali.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
         
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
