@@ -66,27 +66,39 @@ def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
 
 @tool
 def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede un dato tecnico di un MODELLO SPECIFICO (es. 'portata del modello 061-035').
-    QUANDO NON USARLO: Non usarlo per classifiche, confronti tra molti modelli o per cercare campi di applicazione (es. sale operatorie).
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente fornisce un CODICE ALFANUMERICO ESATTO di un modello (es. '061-035') e vuole sapere un suo dato tecnico.
     ISTRUZIONI: 
-    1. 'codice_modello': estrai SOLO il codice (es. '061-035').
+    1. 'codice_modello': estrai SOLO il codice esatto (es. '061-035').
     2. 'parametro_richiesto': la grandezza fisica da cercare."""
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_SPECIFICO")
     print(f"[TOOL] Ricerca chirurgica -> Modello: '{codice_modello}' | Parametro: '{parametro_richiesto}'")
     
-    if not db_catalogo:
-        return "Errore: Database catalogo non caricato."
+    if df_catalogo is None:
+        return "Errore: file Excel non caricato."
     
-    codice_pulito = codice_modello.lower().replace("modello", "").strip()
-    # filtra la ricerca solo per i documenti che hanno questo esatto modello nei metadati
-    docs = db_catalogo.similarity_search(parametro_richiesto, k=5, filter={"modello_id": codice_pulito})
+    # pulizia del codice cercato
+    codice_pulito = codice_modello.upper().replace("MODELLO", "").strip()
     
-    if not docs:
-        return "Nessun dato trovato nel catalogo per questo modello specifico."
+    # cerca la riga esatta nel DataFrame Pandas
+    df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
     
-    risultati = [f"[Modello: {d.metadata.get('modello_id', 'N/D')}] {d.page_content}" for d in docs]
-    print(f"[TOOL] Estratti {len(docs)} documenti.")
-    return "\n".join(risultati)
+    if df_modello.empty:
+        return f"Modello {codice_pulito} non trovato nel catalogo Excel."
+        
+    # cerca le colonne che contengono la parola richiesta
+    richiesta_pulita = parametro_richiesto.lower().strip()
+    colonne_trovate = [col for col in colonne_catalogo if richiesta_pulita in str(col).lower()]
+    
+    if not colonne_trovate:
+         return f"Il parametro '{parametro_richiesto}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
+         
+    # estrae tutti i parametri trovati
+    risultati = []
+    for col in colonne_trovate:
+        valore = df_modello.iloc[0].get(col, "N/D")
+        risultati.append(f"- {col}: {valore}")
+        
+    return f"Dati tecnici per il modello {codice_pulito}:\n" + "\n".join(risultati)
 
 @tool
 def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decrescente", top_n: int = 3, valore_target: float = None) -> str:
