@@ -11,7 +11,7 @@ from langgraph.graph import StateGraph, END
 from langchain_ollama import ChatOllama
 from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 import plotly.express as px
