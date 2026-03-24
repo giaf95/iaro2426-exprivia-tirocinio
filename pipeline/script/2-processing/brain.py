@@ -744,125 +744,18 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
     global memoria_conversazioni
 
     if chat_id not in memoria_conversazioni:
-        istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico HVAC. Devi rispettare RIGOROSAMENTE questo albero decisionale (IF/THEN):
-
-1. IF l'utente chiede un modello per CONDIZIONARE, RAFFRESCARE o RISCALDARE un ambiente:
-- Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Temp. Esterna, 4. Temp. Interna.
-- SE l'utente fa un follow-up, recupera i dati invariati dalla cronologia.
-- SE CONTINUA A MANCARE UN DATO: Fermati e chiedilo.
-- SE HAI TUTTI I DATI: Usa 'calcola_fabbisogno_termico' e poi 'cerca_catalogo_generico'.
-
-2. IF l'utente chiede un modello per VENTILARE o garantire il RICAMBIO D'ARIA:
-- Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Tipo di locale.
-- SE l'utente sta aggiornando i numeri, recupera i dati invariati dalla chat.
-- SE MANCA UN DATO: Fermati e chiedilo.
-- SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli.
-
-3. IF l'utente chiede il CONSUMO ELETTRICO o quale modello CONVIENE/CONSUMA MENO:
-- Usa 'calcola_consumo_elettrico'. NON cercare l'efficienza prima, il tool la troverà da solo.
-
-4. IF l'utente chiede la PREVALENZA o la COMPATIBILITÀ CON I CANALI (perdita di carico / Pascal):
-- Usa 'verifica_prevalenza_canali' passando i modelli e i Pascal richiesti.
-
-5. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
-- Se nella richiesta è presente un codice modello esatto (es. 091-051), usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
-- È ASSOLUTAMENTE VIETATO usare 'consulta_dizionario_catalogo' se la domanda contiene il codice di un modello.
-
-6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
-- Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
-
-7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
-- Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
-
-8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o una TABELLA visiva:
-- Usa il tool 'prepara_dati_grafico' SOLO E SOLTANTO SE l'utente ha scritto testualmente una di queste tre parole.
-- NON usare questo tool di tua iniziativa per "abbellire" i risultati. Per le ricerche normali sei OBBLIGATO a usare sempre 'cerca_catalogo_generico'.
-
-9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati per Python":
-- Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente in modo che possa generare il codice corretto.
-
-10. IF l'utente chiede di creare un GRAFICO, un DIAGRAMMA o PLOTTARE i dati che sono appena stati estratti o filtrati nel CSV:
-- Usa il tool 'genera_grafico_avanzato' passando la frase intera dell'utente.
-
-REGOLE GLOBALI:
-- Rispondi SOLO in Italiano.
-- NON inventare parametri. Se non li sai, chiedili.
-- DIVIETO DI CALCOLO A VUOTO: Se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
-- DIVIETO DI JSON: È severamente vietato rispondere mostrando codice JSON grezzo all'utente.
-- DIVIETO CHIAMATE MULTIPLE: Ti è ASSOLUTAMENTE VIETATO chiamare due tool contemporaneamente. Scegli UN SOLO tool alla volta, attendi il risultato, e poi rispondi all'utente.
-- REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da QUALSIASI tool, ti è ASSOLUTAMENTE VIETATO richiamare lo stesso tool o chiamarne altri per fare verifiche extra. Devi IMMEDIATAMENTE formulare la risposta discorsiva per l'utente, basandoti sui dati estratti, e fermarti.
-- REGOLA DI PRIVACY: Ti è ASSOLUTAMENTE VIETATO menzionare nomi di cartelle, percorsi di file o dettagli del sistema operativo (es. "tirocinio", "exprivia", "C:/Users...") nelle tue risposte. Limitati esclusivamente ai dati tecnici del catalogo.""")
-        memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
-
-    memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
-
-    match_modello_specifico = re.search(r"\b\d{3}-\d{3}\b", user_query)
-    richiesta_visiva = any(parola in user_query.lower() for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
-
-    messaggi_completi = memoria_conversazioni[chat_id]
-    messaggi_per_llm = [messaggi_completi[0]]
-
-    if len(messaggi_completi) > 7:
-        messaggi_per_llm.extend(messaggi_completi[-6:])
-    else:
-        messaggi_per_llm.extend(messaggi_completi[1:])
-
-    current_state = {"messages": messaggi_per_llm}
-
-    try:
-        # attiva il cronometro prima che l'llm inizi a pensare
-        start_time = time.time()
-        result = app.invoke(current_state, {"recursion_limit": 10})
-        end_time = time.time()
-        tempo_trascorso = end_time - start_time
-        print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
-    except Exception as e:
-        return {"testo": f"Si è verificato un errore nel motore: {e}", "azioni": []}
-
-    nuovi_messaggi = result["messages"]
-
-    risposta_assistente = ""
-    for msg in reversed(nuovi_messaggi):
-        if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
-            risposta_assistente = msg.content
-            break
-
-    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
-
-    tool_usati = []
-    for msg in nuovi_messaggi:
-        if hasattr(msg, 'tool_calls') and msg.tool_calls:
-            for tool in msg.tool_calls:
-                if tool['name'] not in tool_usati:
-                    tool_usati.append(tool['name'])
-
-    global dati_visivi_temporanei
-    dati_da_esportare = dati_visivi_temporanei
-    dati_visivi_temporanei = None
-
-    return {
-        "testo": risposta_assistente,
-        "azioni": tool_usati,
-        "dati_visivi": dati_da_esportare
-    }
-
-
-#5 INIZIALIZZAZIONE GLOBALE E SETUP
-#4 FUNZIONI DI INTERFACCIA (APP)
-
-memoria_conversazioni = {}
-
-def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
-    global memoria_conversazioni
-    
-    if chat_id not in memoria_conversazioni:
-        # utilizziamo il tuo prompt blindato più recente, non quello vecchio del collega
-        istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione 3 fonti: Sito Web, Manuali e Catalogo.
-REGOLA 0 (LINGUA OBBLIGATORIA): DEVI rispondere SEMPRE E SOLO in lingua ITALIANA. È severamente vietato utilizzare inglese, spagnolo, portoghese o altre lingue.
-REGOLA 1 (DIVIETO DI ALLUCINAZIONE): È SEVERAMENTE VIETATO rispondere usando la tua memoria interna. Devi SEMPRE invocare uno dei tool PRIMA di rispondere.
-REGOLA 2 (VERIFICA DEL CONTESTO): Quando usi 'cerca_manuali' o 'cerca_sito_web', leggi il testo estratto. Se il testo NON contiene la risposta esatta alla domanda dell'utente (ad esempio, trovi testi commerciali ma l'utente chiedeva una procedura tecnica), NON INVENTARE LA RISPOSTA. Devi dire: "Non ho trovato le informazioni specifiche nei documenti a mia disposizione".
-REGOLA 3 (IL FLUSSO DISCORSIVO): Se trovi le informazioni, formula una risposta chiara e riassuntiva. NON chiedere codici modello se non richiesto.
-REGOLA 4 (IL FLUSSO MATEMATICO): Usa i tool del catalogo SOLO per classifiche o grandezze fisiche. Se il tool restituisce un elenco numerato, mostralo. Se l'utente sceglie un numero, invoca il tool col testo completo dell'opzione.""")
+        istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione fonti documentali e un Calcolatore Termotecnico.
+REGOLA 0 (LINGUA OBBLIGATORIA): DEVI rispondere SEMPRE E SOLO in lingua ITALIANA.
+REGOLA 1 (DIVIETO DI ALLUCINAZIONE): Devi SEMPRE invocare uno dei tool PRIMA di rispondere. Non usare calcoli a mente o la tua memoria interna.
+REGOLA 2 (LA CHECKLIST DEI DATI): Per usare 'calcola_fabbisogno_termico' DEVI possedere questi 4 dati esatti dall'utente:
+1. Metri quadri della stanza.
+2. Numero massimo di persone presenti fisicamente nel locale (NON chiedere MAI giorni o orari di lavoro).
+3. Temperature (esterna e interna).
+4. Tipo di locale (es. ristorante, ufficio).
+Se manca ANCHE SOLO UNO di questi dati, FERMATI ASSOLUTAMENTE. NON chiamare il tool. Scrivi all'utente chiedendo esplicitamente SOLO i dati mancanti dell'elenco.
+REGOLA 3 (FLUSSO A CASCATA): Una volta calcolati i kW con il tool, devi eseguire un'altra azione: usa 'cerca_catalogo_generico' per cercare nel catalogo un modello che abbia una potenza adatta.
+REGOLA 4 (VERIFICA DEL CONTESTO): Quando usi i tool documentali ('cerca_manuali' o 'cerca_sito_web'), leggi il testo estratto. Se non trovi la risposta, ammettilo.
+REGOLA 5 (SCELTA NUMERICA CATALOGO): Se il catalogo restituisce un elenco numerato, mostralo all'utente.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
         
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
