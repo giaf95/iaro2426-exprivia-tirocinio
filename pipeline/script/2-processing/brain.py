@@ -89,13 +89,14 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
     return "\n".join(risultati)
 
 @tool
-def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decrescente", top_n: int = 3) -> str:
+def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decrescente", top_n: int = 3, valore_target: float = None) -> str:
     """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo.
-    REGOLA FONDAMENTALE: Usa SOLO i parametri 'parametro_richiesto', 'ordinamento' e 'top_n'. È severamente vietato inventare altri parametri.
+    REGOLA FONDAMENTALE: Usa SOLO i parametri richiesti.
     PARAMETRI:
-    - 'parametro_richiesto': Inserisci ESATTAMENTE il nome della colonna incollato dall'utente.
-    - 'ordinamento': inserisci la parola 'crescente' se l'utente cerca i valori più bassi o minimi. Inserisci 'decrescente' se cerca i più alti o massimi.
-    - 'top_n': il numero di modelli da restituire."""
+    - 'parametro_richiesto': Inserisci ESATTAMENTE il nome della colonna.
+    - 'ordinamento': 'crescente' o 'decrescente'.
+    - 'top_n': il numero di modelli da restituire.
+    - 'valore_target': (OPZIONALE) Se l'utente o il Calcolatore ti chiedono un modello per coprire un certo fabbisogno in kW, inserisci qui il numero. Il tool filtrerà i modelli adatti."""
     print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
     print(f"[TOOL] Estrazione -> Parametro: '{parametro_richiesto}', Ordine: '{ordinamento}', Top: {top_n}")
 
@@ -166,10 +167,14 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
 
         # se c'e un pareggio chiede aiuto all'utente
         if len(migliori_colonne) > 1:
-            testo_opzioni = ""
-            for opt in migliori_colonne:
-                testo_opzioni = testo_opzioni + "- " + opt + "\n"
-            return "Dì all'utente ESATTAMENTE questo: 'Il parametro è ambiguo. Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n" + testo_opzioni + "'"
+            if valore_target is not None:
+                # Se c'è un target, siamo in un flusso automatico: forza la prima opzione
+                colonna_reale = migliori_colonne[0]
+            else:
+                testo_opzioni = ""
+                for opt in migliori_colonne:
+                    testo_opzioni = testo_opzioni + "- " + opt + "\n"
+                return "Dì all'utente ESATTAMENTE questo: 'Il parametro è ambiguo. Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n" + testo_opzioni + "'"
             
         elif len(migliori_colonne) == 1:
             colonna_reale = migliori_colonne[0]
@@ -193,15 +198,23 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
     df[colonna_reale] = df[colonna_reale].apply(pulisci_numero)
     df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
     
-    # capisce come fare la classifica in base al parametro dell'llm
-    ordinamento_minuscolo = ordinamento.strip().lower()
-    if ordinamento_minuscolo == "crescente":
-        deve_crescere = True
-    else:
-        deve_crescere = False
-        
     risultato = df.dropna(subset=[colonna_reale])
-    risultato = risultato.sort_values(by=colonna_reale, ascending=deve_crescere)
+
+    # ricerca a target
+    if valore_target is not None:
+        # tieni solo i modelli con potenza uguale o superiore al target richiesto
+        risultato = risultato[risultato[colonna_reale] >= valore_target]
+        # ordina in modo crescente per dare il modello appena sufficiente
+        risultato = risultato.sort_values(by=colonna_reale, ascending=True)
+    else:
+        # vecchia logica per i massimi e minimi assoluti
+        ordinamento_minuscolo = ordinamento.strip().lower()
+        if ordinamento_minuscolo == "crescente":
+            deve_crescere = True
+        else:
+            deve_crescere = False
+        risultato = risultato.sort_values(by=colonna_reale, ascending=deve_crescere)
+
     risultato = risultato.head(top_n)
 
     # crea l'elenco testuale per evitare che l'llm si confonda leggendo una tabella
@@ -281,7 +294,7 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, delta_t: flo
     fabbisogno_totale_watt = (carico_base + carico_persone) * moltiplicatore_delta
     fabbisogno_kw = fabbisogno_totale_watt / 1000
 
-    return f"Calcolo completato. Il fabbisogno termico stimato per questo {tipo_locale} è di {fabbisogno_kw:.2f} kW. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico' per cercare i modelli con una 'Potenza Frigorifera' (o parametro simile) uguale o leggermente superiore a {fabbisogno_kw:.2f} kW."
+    return f"Calcolo completato: {fabbisogno_kw:.2f} kW. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Inserisci come parametro_richiesto ESATTAMENTE 'Potenza frigorifera totale macchina' e inserisci {fabbisogno_kw:.2f} nel campo 'valore_target'."
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
