@@ -10,7 +10,7 @@ from langgraph.graph import StateGraph, END
 from langchain_ollama import ChatOllama
 from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 
@@ -424,51 +424,3 @@ workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "end
 workflow.add_edge("tools", "agent")
 
 app = workflow.compile()
-
-#5 ESECUZIONE CHATBOT (INTEGRAZIONE CON APP)
-
-memoria_conversazioni = {}
-
-def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
-    global memoria_conversazioni
-    
-    if chat_id not in memoria_conversazioni:
-        istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione 3 fonti: Sito Web, Manuali e Catalogo.
-REGOLA 0 (LINGUA OBBLIGATORIA): DEVI rispondere SEMPRE E SOLO in lingua ITALIANA. È severamente vietato utilizzare inglese, spagnolo, portoghese o altre lingue.
-REGOLA 1 (DIVIETO DI ALLUCINAZIONE): È SEVERAMENTE VIETATO rispondere usando la tua memoria interna. Devi SEMPRE invocare uno dei tool PRIMA di rispondere.
-REGOLA 2 (VERIFICA DEL CONTESTO): Quando usi 'cerca_manuali' o 'cerca_sito_web', leggi il testo estratto. Se il testo NON contiene la risposta esatta alla domanda dell'utente (ad esempio, trovi testi commerciali ma l'utente chiedeva una procedura tecnica), NON INVENTARE LA RISPOSTA. Devi dire: "Non ho trovato le informazioni specifiche nei documenti a mia disposizione".
-REGOLA 3 (IL FLUSSO DISCORSIVO): Se trovi le informazioni, formula una risposta chiara e riassuntiva. NON chiedere codici modello se non richiesto.
-REGOLA 4 (IL FLUSSO MATEMATICO): Usa i tool del catalogo SOLO per classifiche o grandezze fisiche. Se il tool restituisce un elenco numerato, mostralo. Se l'utente sceglie un numero, invoca il tool col testo completo dell'opzione.""")
-        memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
-        
-    memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
-    
-    current_state = {"messages": memoria_conversazioni[chat_id]}
-    
-    try:
-        # attiva il cronometro prima che l'llm inizi a pensare
-        start_time = time.time()
-        result = app.invoke(current_state, {"recursion_limit": 10})
-        end_time = time.time()
-        tempo_trascorso = end_time - start_time
-        print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
-    except Exception as e:
-        return {"testo": f"Si è verificato un errore nel motore: {e}", "azioni": []}
-        
-    memoria_conversazioni[chat_id] = result['messages']
-    risposta_assistente = result['messages'][-1].content
-    
-    # estrae i nomi dei tool usati per mostrarli nell'interfaccia grafica
-    tool_usati = []
-    for msg in result['messages']:
-        if hasattr(msg, 'tool_calls') and msg.tool_calls:
-            for tool in msg.tool_calls:
-                if tool['name'] not in tool_usati:
-                    tool_usati.append(tool['name'])
-    #aggiunge alla memoria SOLO la risposta finale, senza il ragionamento dietro
-    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
-                    
-    return {
-        "testo": risposta_assistente,
-        "azioni": tool_usati
-    }
