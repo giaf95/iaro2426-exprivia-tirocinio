@@ -270,16 +270,20 @@ def cerca_manuali(query: str) -> str:
     return testo_finale
 
 @tool
-def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, delta_t: float, tipo_locale: str) -> str:
+def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna: float, temp_interna: float, tipo_locale: str) -> str:
     """Usa questo tool per calcolare i kW necessari per condizionare una stanza.
-    DIVIETO ASSOLUTO: NON INVENTARE NESSUN PARAMETRO. Se l'utente non ti ha detto esplicitamente le temperature (per calcolare il delta_t) o le persone, NON CHIAMARE QUESTO TOOL. Chiedi prima i dati mancanti.
+    DIVIETO ASSOLUTO: NON INVENTARE LE TEMPERATURE. Se l'utente non ti ha scritto esplicitamente quanti gradi ci sono fuori e quanti ne vuole dentro, FERMATI E CHIEDILI.
     PARAMETRI:
     - area_mq: metri quadri della stanza.
     - numero_persone: quante persone occupano la stanza.
-    - delta_t: differenza di temperatura in gradi (es. fuori 35, dentro 20 = 15).
-    - tipo_locale: es. 'discoteca', 'ufficio', ecc."""
+    - temp_esterna: temperatura in gradi all'esterno (es. 35).
+    - temp_interna: temperatura desiderata all'interno (es. 22).
+    - tipo_locale: es. 'discoteca', 'ufficio', 'ristorante', ecc."""
     print(f"\n[TOOL] Esecuzione CALCOLA_FABBISOGNO_TERMICO")
-    print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} persone, dT {delta_t}°, locale: {tipo_locale}")
+    
+    # faccio calcolare il Delta T a Python, non all'AI
+    delta_t = abs(temp_esterna - temp_interna)
+    print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} persone, T.Est: {temp_esterna}°, T.Int: {temp_interna}° (Delta: {delta_t}°), locale: {tipo_locale}")
 
     # 1. Carico Base Strutturale (W/mq)
     w_mq = 100 # Default per residenziale/uffici
