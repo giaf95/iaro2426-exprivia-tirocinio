@@ -271,13 +271,13 @@ def cerca_manuali(query: str) -> str:
 
 @tool
 def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, delta_t: float, tipo_locale: str) -> str:
-    """Usa questo tool per calcolare i kW (potenza frigorifera/termica) necessari per condizionare una stanza.
-    Se l'utente non fornisce questi dati, CHIEDILI prima di usare il tool.
+    """Usa questo tool per calcolare i kW necessari per condizionare una stanza.
+    DIVIETO ASSOLUTO: NON INVENTARE NESSUN PARAMETRO. Se l'utente non ti ha detto esplicitamente le temperature (per calcolare il delta_t) o le persone, NON CHIAMARE QUESTO TOOL. Chiedi prima i dati mancanti.
     PARAMETRI:
-    - area_mq: metri quadri della stanza (es. 30).
-    - numero_persone: quante persone occupano la stanza (es. 50).
-    - delta_t: differenza di temperatura tra esterno e interno in gradi (es. fuori 35, dentro 20 = delta_t di 15).
-    - tipo_locale: es. 'discoteca', 'ufficio', 'residenziale', 'palestra'."""
+    - area_mq: metri quadri della stanza.
+    - numero_persone: quante persone occupano la stanza.
+    - delta_t: differenza di temperatura in gradi (es. fuori 35, dentro 20 = 15).
+    - tipo_locale: es. 'discoteca', 'ufficio', ecc."""
     print(f"\n[TOOL] Esecuzione CALCOLA_FABBISOGNO_TERMICO")
     print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} persone, dT {delta_t}°, locale: {tipo_locale}")
 
@@ -337,14 +337,19 @@ memoria_conversazioni = {}
 def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
     global memoria_conversazioni
     
-    if chat_id not in memoria_conversazioni:# utilizziamo il tuo prompt blindato più recente, non quello vecchio del collega
+    if chat_id not in memoria_conversazioni:
         istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione fonti documentali e un Calcolatore Termotecnico.
 REGOLA 0 (LINGUA OBBLIGATORIA): DEVI rispondere SEMPRE E SOLO in lingua ITALIANA.
 REGOLA 1 (DIVIETO DI ALLUCINAZIONE): Devi SEMPRE invocare uno dei tool PRIMA di rispondere. Non usare calcoli a mente o la tua memoria interna.
-REGOLA 2 (DOMANDE MIRATE E PROATTIVITÀ): Se l'utente ti chiede di condizionare un ambiente ma non ti fornisce i kW, DEVI usare 'calcola_fabbisogno_termico'. Se per usare questo tool ti mancano dei dati (metri quadri, numero di persone, temperature o tipo di locale), NON INVENTARLI. Fermati e chiedi esplicitamente all'utente i dati mancanti.
+REGOLA 2 (LA CHECKLIST DEI DATI): Per usare 'calcola_fabbisogno_termico' DEVI possedere questi 4 dati esatti dall'utente:
+1. Metri quadri
+2. Numero di persone
+3. Temperature (esterna e interna)
+4. Tipo di locale
+Se manca ANCHE SOLO UNO di questi dati, FERMATI ASSOLUTAMENTE. NON chiamare il tool. Scrivi all'utente chiedendo esplicitamente il dato che manca.
 REGOLA 3 (FLUSSO A CASCATA): Una volta calcolati i kW con il tool, devi eseguire un'altra azione: usa 'cerca_catalogo_generico' per cercare nel catalogo un modello che abbia una potenza adatta.
 REGOLA 4 (VERIFICA DEL CONTESTO): Quando usi i tool documentali ('cerca_manuali' o 'cerca_sito_web'), leggi il testo estratto. Se non trovi la risposta, ammettilo.
-REGOLA 5 (SCELTA NUMERICA CATALOGO): Se il catalogo restituisce un elenco numerato per disambiguare le colonne, mostralo all'utente.""")
+REGOLA 5 (SCELTA NUMERICA CATALOGO): Se il catalogo restituisce un elenco numerato, mostralo all'utente.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
         
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
