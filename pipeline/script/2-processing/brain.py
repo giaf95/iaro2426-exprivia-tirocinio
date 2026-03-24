@@ -354,7 +354,7 @@ Se manca ANCHE SOLO UNO di questi dati, FERMATI ASSOLUTAMENTE. NON chiamare il t
 REGOLA 3 (FLUSSO A CASCATA): Una volta calcolati i kW con il tool, devi eseguire un'altra azione: usa 'cerca_catalogo_generico' per cercare nel catalogo un modello che abbia una potenza adatta.
 REGOLA 4 (VERIFICA DEL CONTESTO): Quando usi i tool documentali ('cerca_manuali' o 'cerca_sito_web'), leggi il testo estratto. Se non trovi la risposta, ammettilo.
 REGOLA 5 (SCELTA NUMERICA CATALOGO): Se il catalogo restituisce un elenco numerato, mostralo all'utente.
-REGOLA 6 (FOCUS ANTI-LOOP): Concentrati ESCLUSIVAMENTE sull'ultima domanda dell'utente. NON richiamare MAI 'calcola_fabbisogno_termico' o 'cerca_catalogo_generico' se i calcoli sono già stati fatti, a meno che l'utente non cambi i metri quadri. Se l'utente chiede un dettaglio di un modello appena trovato, cambia strumento e usa 'cerca_catalogo_specifico'. Se chiede info su manutenzione, installazione o filtri, usa 'cerca_sito_web' o 'cerca_manuali'.""")
+REGOLA 6 (FOCUS ANTI-LOOP E AMNESIA): Concentrati ESCLUSIVAMENTE sull'ultima domanda dell'utente. Se nella cronologia hai GIÀ calcolato i kW e proposto dei modelli, NON DEVI MAI PIÙ richiamare 'calcola_fabbisogno_termico' o 'cerca_catalogo_generico' per quella stanza. Usa SOLO 'cerca_catalogo_specifico' per approfondire i dati di un modello, o i tool documentali per argomenti generali.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
         
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
