@@ -270,20 +270,16 @@ def cerca_manuali(query: str) -> str:
     return testo_finale
 
 @tool
-def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna: float, temp_interna: float, tipo_locale: str) -> str:
-    """Usa questo tool per calcolare i kW necessari per condizionare una stanza.
-    DIVIETO ASSOLUTO: NON INVENTARE LE TEMPERATURE. Se l'utente non ti ha scritto esplicitamente quanti gradi ci sono fuori e quanti ne vuole dentro, FERMATI E CHIEDILI.
+def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, delta_t: float, tipo_locale: str) -> str:
+    """Usa questo tool per calcolare i kW (potenza frigorifera/termica) necessari per condizionare una stanza.
+    Se l'utente non fornisce questi dati, CHIEDILI prima di usare il tool.
     PARAMETRI:
-    - area_mq: metri quadri della stanza.
-    - numero_persone: quante persone occupano la stanza.
-    - temp_esterna: temperatura in gradi all'esterno (es. 35).
-    - temp_interna: temperatura desiderata all'interno (es. 22).
-    - tipo_locale: es. 'discoteca', 'ufficio', 'ristorante', ecc."""
+    - area_mq: metri quadri della stanza (es. 30).
+    - numero_persone: quante persone occupano la stanza (es. 50).
+    - delta_t: differenza di temperatura tra esterno e interno in gradi (es. fuori 35, dentro 20 = delta_t di 15).
+    - tipo_locale: es. 'discoteca', 'ufficio', 'residenziale', 'palestra'."""
     print(f"\n[TOOL] Esecuzione CALCOLA_FABBISOGNO_TERMICO")
-    
-    # faccio calcolare il Delta T a Python, non all'AI
-    delta_t = abs(temp_esterna - temp_interna)
-    print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} persone, T.Est: {temp_esterna}°, T.Int: {temp_interna}° (Delta: {delta_t}°), locale: {tipo_locale}")
+    print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} persone, dT {delta_t}°, locale: {tipo_locale}")
 
     # 1. Carico Base Strutturale (W/mq)
     w_mq = 100 # Default per residenziale/uffici
@@ -310,238 +306,7 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna
     fabbisogno_totale_watt = (carico_base + carico_persone) * moltiplicatore_delta
     fabbisogno_kw = fabbisogno_totale_watt / 1000
 
-    return f"Calcolo completato: {fabbisogno_kw:.2f} kW. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Inserisci come parametro_richiesto ESATTAMENTE 'Potenza frigorifera totale macchina' e inserisci {fabbisogno_kw:.2f} nel campo 'valore_target'."
-
-@tool
-def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str = "") -> str:
-    """Usa questo tool per calcolare il fabbisogno di ventilazione (m3/h).
-    REGOLA ANTI-INVENZIONE: Se l'utente NON ti ha scritto i numeri esatti nel messaggio, DEVI passare 0 (zero). Se non sai il tipo di locale, non inventarlo e lascia la stringa vuota "".
-    PARAMETRI:
-    - area_mq: metri quadri (inserisci 0 se non forniti).
-    - numero_persone: quantità di persone (inserisci 0 se non fornite).
-    - tipo_locale: es. 'scuola', 'palestra', 'ufficio'. (lascia "" se non lo sai)."""
-    print(f"\n[TOOL] Esecuzione CALCOLA_PORTATA_ARIA")
-    
-    #guardrail (Numeri)
-    if area_mq <= 0 or numero_persone <= 0:
-        print("[TOOL] Dati numerici mancanti rilevati. Blocco dell'esecuzione.")
-        return "ISTRUZIONE PER L'AI: Dati incompleti. FERMATI e NON usare il catalogo generico. Rispondi all'utente chiedendo di fornirti i metri quadri e il numero di persone."
-
-    #guardrail (Testo / Amnesia)
-    if not tipo_locale or tipo_locale.strip() == "":
-         tipo_locale = "generico"
-
-    # 1. Calcolo basato sulle persone (Fabbisogno per persona)
-    m3h_persona = 40 # Standard uffici/residenziale
-    tipo_locale_low = tipo_locale.lower()
-    if "palestra" in tipo_locale_low or "discoteca" in tipo_locale_low or "ristorante" in tipo_locale_low:
-        m3h_persona = 60
-        
-    fabbisogno_persone = numero_persone * m3h_persona
-    
-    # 2. Calcolo basato sui ricambi d'aria del volume (ACH)
-    altezza_media = 3.0 # Assumiamo 3 metri di altezza standard
-    volume = area_mq * altezza_media
-    
-    ach = 2.0 # Ricambi/ora standard
-    if "scuola" in tipo_locale_low or "ristorante" in tipo_locale_low:
-        ach = 4.0
-    elif "palestra" in tipo_locale_low or "discoteca" in tipo_locale_low:
-        ach = 6.0
-        
-    fabbisogno_volumetrico = volume * ach
-    
-    # Prendi il valore più alto
-    portata_finale = max(fabbisogno_persone, fabbisogno_volumetrico)
-    
-    print(f"[TOOL] MAX tra Persone ({fabbisogno_persone}) e Volume ({fabbisogno_volumetrico}) = {portata_finale} m3/h")
-
-    return f"Calcolo completato: {portata_finale:.2f} m3/h. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Parametro: 'Portata Massima Mandata Standard'. Target: {portata_finale:.2f}."
-
-@tool
-def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) -> str:
-    """Usa questo tool per calcolare il consumo elettrico (kW assorbiti) di uno o più modelli.
-    PARAMETRI:
-    - codici_modelli: i codici dei modelli da analizzare. Se l'utente chiede un confronto tra più modelli, inseriscili tutti separati da virgola (es. 'modelloA, modelloB').
-    - kw_richiesti: (Opzionale) Estrai il numero di kW dal messaggio dell'utente. Se non specificato, lascia 0.0."""
-    print(f"\n[TOOL] Esecuzione CALCOLA_CONSUMO_ELETTRICO -> Modelli: {codici_modelli} | Input kW: {kw_richiesti}")
-
-    if df_catalogo is None:
-        return "Errore: database catalogo non caricato."
-
-    if not codici_modelli or codici_modelli.strip() == "":
-        return "Dati incompleti. Chiedi all'utente il codice del modello."
-
-    # 1. pulisce la stringa dell'AI e la divide in una lista (gestendo "e", "o", "oppure", virgole)
-    stringa_pulita = codici_modelli.lower().replace(' e ', ',').replace(' o ', ',').replace(' oppure ', ',')
-    lista_codici = [c.strip() for c in stringa_pulita.split(',') if c.strip()]
-
-    risultati_finali = []
-
-    # 2.ciclo for: calcola il consumo per ogni modello richiesto
-    for codice_singolo in lista_codici:
-        codice_pulito = codice_singolo.upper().replace("MODELLO", "").strip()
-        df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
-
-        if df_modello.empty:
-            risultati_finali.append(f"Modello {codice_pulito} non trovato nel catalogo.")
-            continue
-
-        risultati = []
-        kw_attuali = kw_richiesti
-
-        # auto-recupero
-        if kw_attuali <= 0:
-            col_potenza = [col for col in colonne_catalogo if 'potenza frigorifera totale' in str(col).lower()]
-            if col_potenza:
-                val_potenza = df_modello.iloc[0].get(col_potenza[0], 0)
-                try:
-                    kw_attuali = float(str(val_potenza).replace(',', '.'))
-                    risultati.append(f"*(Nota: calcolo basato su potenza di targa di {kw_attuali} kW)*")
-                except:
-                    risultati_finali.append(f"Modello {codice_pulito}: Impossibile determinare i kW.")
-                    continue
-            else:
-                 risultati_finali.append(f"Modello {codice_pulito}: Impossibile determinare i kW.")
-                 continue
-
-        # estrazione di EER e COP
-        eer_col = [col for col in colonne_catalogo if 'eer' in str(col).lower()]
-        cop_col = [col for col in colonne_catalogo if 'cop' in str(col).lower()]
-
-        if eer_col:
-            valore_eer = df_modello.iloc[0].get(eer_col[0], "N/D")
-            try:
-                eer_float = float(str(valore_eer).replace(',', '.'))
-                consumo_freddo = kw_attuali / eer_float
-                risultati.append(f"- Raffrescamento (EER {eer_float}): assorbe circa {consumo_freddo:.2f} kW elettrici.")
-            except:
-                pass
-
-        if cop_col:
-            valore_cop = df_modello.iloc[0].get(cop_col[0], "N/D")
-            try:
-                cop_float = float(str(valore_cop).replace(',', '.'))
-                consumo_caldo = kw_attuali / cop_float
-                risultati.append(f"- Riscaldamento (COP {cop_float}): assorbe circa {consumo_caldo:.2f} kW elettrici.")
-            except:
-                pass
-
-        if risultati:
-            risultati_finali.append(f"**Modello {codice_pulito}** (Carico: {kw_attuali} kW):\n" + "\n".join(risultati))
-        else:
-            risultati_finali.append(f"Modello {codice_pulito}: dati di efficienza validi non trovati.")
-
-@tool
-def verifica_prevalenza_canali(codici_modelli: str, prevalenza_richiesta_pa: float = 0.0) -> str:
-    """Usa questo tool per verificare se i modelli hanno abbastanza prevalenza per i canali dell'aria.
-    PARAMETRI:
-    - codici_modelli: i codici dei modelli separati da virgola (es. '061-035, 091-051').
-    - prevalenza_richiesta_pa: la perdita di carico in Pascal (Pa) dell'impianto. Se non specificata, lascia 0.0."""
-    print(f"\n[TOOL] Esecuzione VERIFICA_PREVALENZA -> Modelli: {codici_modelli} | Pascal: {prevalenza_richiesta_pa}")
-
-    if df_catalogo is None:
-        return "Errore: database catalogo non caricato."
-
-    if not codici_modelli or codici_modelli.strip() == "":
-        return "Dati incompleti. Chiedi all'utente il codice del modello."
-
-    # pulisce la stringa base
-    stringa_pulita = codici_modelli.lower().replace(' e ', ',').replace(' o ', ',').replace(' oppure ', ',')
-    
-    # divide i modelli senza usare list comprehension
-    parti = stringa_pulita.split(',')
-    lista_codici = []
-    for p in parti:
-        if p.strip() != "":
-            lista_codici.append(p.strip())
-
-    risultati_finali = []
-
-    # controlla ogni singolo modello
-    for codice_singolo in lista_codici:
-        codice_pulito = codice_singolo.upper().replace("MODELLO", "").strip()
-        df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
-
-        if df_modello.empty:
-            risultati_finali.append(f"Modello {codice_pulito} non trovato.")
-            continue
-
-        # cerca la colonna della prevalenza
-        col_prevalenza = ""
-        for col in colonne_catalogo:
-            if 'prevalenza massima mandata' in str(col).lower():
-                col_prevalenza = col
-                break
-
-        if col_prevalenza == "":
-            risultati_finali.append(f"Modello {codice_pulito}: impossibile trovare i dati di prevalenza.")
-            continue
-
-        valore_prev = df_modello.iloc[0].get(col_prevalenza, 0)
-        
-        try:
-            prev_float = float(str(valore_prev).replace(',', '.'))
-        except:
-            prev_float = 0.0
-
-        # confronta i valori
-        if prevalenza_richiesta_pa <= 0:
-            risultati_finali.append(f"Modello {codice_pulito}: ha una prevalenza massima di {prev_float} Pa (richiesta non specificata).")
-        else:
-            if prev_float >= prevalenza_richiesta_pa:
-                risultati_finali.append(f"**Modello {codice_pulito}: COMPATIBILE.** Ha {prev_float} Pa, superiore ai {prevalenza_richiesta_pa} Pa richiesti.")
-            else:
-                risultati_finali.append(f"**Modello {codice_pulito}: NON COMPATIBILE.** Ha solo {prev_float} Pa, insufficiente per i {prevalenza_richiesta_pa} Pa richiesti.")
-
-    # unisce i risultati
-    testo_ritorno = ""
-    for r in risultati_finali:
-        testo_ritorno = testo_ritorno + r + "\n\n"
-
-    # blocco di sicurezza per evitare loop
-    testo_ritorno = testo_ritorno + "=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Il calcolo della prevalenza è completato! ORA FERMATI. NON chiamare nessun altro tool (vietato usare il dizionario o altri calcoli). Scrivi immediatamente la risposta finale all'utente dicendo chiaramente se il modello è COMPATIBILE o NON COMPATIBILE."
-    
-    return testo_ritorno
-
-@tool
-def consulta_dizionario_catalogo(parola_chiave: str = "") -> str:
-    """Usa ESCLUSIVAMENTE questo tool per rispondere a domande su COSA c'è nel catalogo, sul SIGNIFICATO delle caratteristiche, o su COME vengono misurati i parametri (es. rumorosità, decibel, tipo di gas, alimentazione, trifase).
-    REGOLA: Se l'utente NON chiede un calcolo matematico, ma chiede spiegazioni discorsive, usa sempre questo tool.
-    PARAMETRI:
-    - parola_chiave: (Opzionale) La parola da cercare (es. 'rumorosità', 'gas'). Lascia vuoto per leggere tutto."""
-    print(f"\n[TOOL] Esecuzione CONSULTA_DIZIONARIO -> Ricerca: '{parola_chiave}'")
-
-    # Percorso relativo sicuro
-    cartella_corrente = os.path.dirname(os.path.abspath(__file__))
-    percorso_file = os.path.join(cartella_corrente, "..", "..", "data", "3-user_interface", "dizionario_catalogo.txt")
-
-    try:
-        with open(percorso_file, 'r', encoding='utf-8') as f:
-            contenuto = f.read()
-    except FileNotFoundError:
-        return "Errore: Il file del dizionario non è stato trovato. Avvisa l'utente."
-
-    if parola_chiave and parola_chiave.strip() != "":
-        paragrafi = contenuto.split('\n\n')
-        risultati = []
-        
-        # ciclo for classico
-        for p in paragrafi:
-            if parola_chiave.lower() in p.lower():
-                risultati.append(p)
-
-        if len(risultati) > 0:
-            testo_ritorno = f"DATI ESTRATTI PER '{parola_chiave}':\n"
-            for r in risultati:
-                testo_ritorno = testo_ritorno + r + "\n\n"
-            
-            return testo_ritorno + "=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Hai trovato i dati! ORA FERMATI. NON chiamare più nessun tool. Scrivi immediatamente la risposta finale all'utente usando SOLO questi dati."
-        else:
-            return f"Nessuna voce trovata per '{parola_chiave}'. Ecco il dizionario:\n\n{contenuto}\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: ORA FERMATI. NON chiamare più nessun tool. Scrivi la risposta finale all'utente e concludi."
-
-    return f"Ecco il dizionario completo:\n\n{contenuto}\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: ORA FERMATI. NON chiamare più nessun tool. Scrivi la risposta finale all'utente e concludi."
-
+    return f"Calcolo completato. Il fabbisogno termico stimato per questo {tipo_locale} è di {fabbisogno_kw:.2f} kW. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico' per cercare i modelli con una 'Potenza Frigorifera' (o parametro simile) uguale o leggermente superiore a {fabbisogno_kw:.2f} kW."
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
@@ -572,26 +337,14 @@ memoria_conversazioni = {}
 def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
     global memoria_conversazioni
     
-    if chat_id not in memoria_conversazioni:
+    if chat_id not in memoria_conversazioni:# utilizziamo il tuo prompt blindato più recente, non quello vecchio del collega
         istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione fonti documentali e un Calcolatore Termotecnico.
 REGOLA 0 (LINGUA OBBLIGATORIA): DEVI rispondere SEMPRE E SOLO in lingua ITALIANA.
 REGOLA 1 (DIVIETO DI ALLUCINAZIONE): Devi SEMPRE invocare uno dei tool PRIMA di rispondere. Non usare calcoli a mente o la tua memoria interna.
-REGOLA 2 (LA CHECKLIST DEI DATI): Per usare 'calcola_fabbisogno_termico' DEVI possedere questi 4 dati esatti dall'utente:
-1. Metri quadri della stanza.
-2. Numero massimo di persone presenti fisicamente nel locale (NON chiedere MAI giorni o orari di lavoro).
-3. Temperature (esterna e interna).
-4. Tipo di locale (es. ristorante, ufficio).
-Se manca ANCHE SOLO UNO di questi dati, FERMATI ASSOLUTAMENTE. NON chiamare il tool. Scrivi all'utente chiedendo esplicitamente SOLO i dati mancanti dell'elenco.
+REGOLA 2 (DOMANDE MIRATE E PROATTIVITÀ): Se l'utente ti chiede di condizionare un ambiente ma non ti fornisce i kW, DEVI usare 'calcola_fabbisogno_termico'. Se per usare questo tool ti mancano dei dati (metri quadri, numero di persone, temperature o tipo di locale), NON INVENTARLI. Fermati e chiedi esplicitamente all'utente i dati mancanti.
 REGOLA 3 (FLUSSO A CASCATA): Una volta calcolati i kW con il tool, devi eseguire un'altra azione: usa 'cerca_catalogo_generico' per cercare nel catalogo un modello che abbia una potenza adatta.
 REGOLA 4 (VERIFICA DEL CONTESTO): Quando usi i tool documentali ('cerca_manuali' o 'cerca_sito_web'), leggi il testo estratto. Se non trovi la risposta, ammettilo.
 REGOLA 5 (SCELTA NUMERICA CATALOGO): Se il catalogo restituisce un elenco numerato per disambiguare le colonne, mostralo all'utente.""")
-    if chat_id not in memoria_conversazioni:
-        istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione 3 fonti: Sito Web, Manuali e Catalogo.
-REGOLA 0 (LINGUA OBBLIGATORIA): DEVI rispondere SEMPRE E SOLO in lingua ITALIANA. È severamente vietato utilizzare inglese, spagnolo, portoghese o altre lingue.
-REGOLA 1 (DIVIETO DI ALLUCINAZIONE): È SEVERAMENTE VIETATO rispondere usando la tua memoria interna. Devi SEMPRE invocare uno dei tool PRIMA di rispondere.
-REGOLA 2 (VERIFICA DEL CONTESTO): Quando usi 'cerca_manuali' o 'cerca_sito_web', leggi il testo estratto. Se il testo NON contiene la risposta esatta alla domanda dell'utente (ad esempio, trovi testi commerciali ma l'utente chiedeva una procedura tecnica), NON INVENTARE LA RISPOSTA. Devi dire: "Non ho trovato le informazioni specifiche nei documenti a mia disposizione".
-REGOLA 3 (IL FLUSSO DISCORSIVO): Se trovi le informazioni, formula una risposta chiara e riassuntiva. NON chiedere codici modello se non richiesto.
-REGOLA 4 (IL FLUSSO MATEMATICO): Usa i tool del catalogo SOLO per classifiche o grandezze fisiche. Se il tool restituisce un elenco numerato, mostralo. Se l'utente sceglie un numero, invoca il tool col testo completo dell'opzione.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
         
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
@@ -653,14 +406,7 @@ except Exception:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [cerca_catalogo_specifico, 
-         cerca_catalogo_generico, 
-         cerca_sito_web, cerca_manuali, 
-         calcola_fabbisogno_termico, 
-         calcola_portata_aria, 
-         calcola_consumo_elettrico, 
-         verifica_prevalenza_canali,
-         consulta_dizionario_catalogo]
+tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
