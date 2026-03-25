@@ -28,7 +28,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-#----------------- Miglioramento del caricamento della memoria utente -----------------
 def carica_memoria_utente(user_id):
     """Estrae i dati di un utente specifico ordinati cronologicamente."""
     conn = sqlite3.connect(DB_FILE)
@@ -45,7 +44,6 @@ def carica_memoria_utente(user_id):
         memoria["tutte_le_chat"][c_id] = json.loads(msg_json)
         memoria["chat_attiva"] = c_id 
     return memoria
-#----------------------------------------------------------------------------------
 
 def salva_memoria_utente(user_id, chat_id, testo_conversazioni):
     conn = sqlite3.connect(DB_FILE)
@@ -57,7 +55,7 @@ def salva_memoria_utente(user_id, chat_id, testo_conversazioni):
     conn.commit()
     conn.close()
 
-#----------- Nuova Funzione ------------------------
+
 def rename_chat(user_id, vecchio_nome, nuovo_nome):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -68,7 +66,29 @@ def rename_chat(user_id, vecchio_nome, nuovo_nome):
     ''', (nuovo_nome, user_id, vecchio_nome))
     conn.commit()
     conn.close()
-#--------------------------------------------------
+
+#------------- Nuova funzione Elimina chat ------------------
+def elimina_chat(user_id, chat_id):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        DELETE FROM storico_chat
+        WHERE user_id = ? AND chat_id = ?
+    ''', (user_id, chat_id))
+    conn.commit()
+    conn.close()
+#----------------------------------------------------------
+#--------------- Nuova funzione Elimina Utente ------------------
+def elimina_utente(user_id):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        DELETE FROM storico_chat
+        WHERE user_id = ?
+    ''', (user_id,))
+    conn.commit()
+    conn.close()
+#----------------------------------------------------------
 
 init_db()
 
@@ -77,7 +97,6 @@ st.set_page_config(page_title="Zoppellaro AI", layout="wide", initial_sidebar_st
 if "user_id" not in st.session_state:
     st.session_state.user_id = "utente_01"
 
-#------- Miglioramento della gestione della memoria utente --------------
 if "memoria_utenti" not in st.session_state:
     st.session_state.memoria_utenti = {}
 if st.session_state.user_id not in st.session_state.memoria_utenti:
@@ -93,7 +112,7 @@ if st.session_state.user_id not in st.session_state.memoria_utenti:
         salva_memoria_utente(st.session_state.user_id, "Chat 1", [])
 
 dati_utente = st.session_state.memoria_utenti[st.session_state.user_id]
-#----------------------------------------------------------------------
+
 
 st.title("Zoppellaro AI - Assistente Tecnico")
 st.caption(f"Utente attivo: **{st.session_state.user_id}** | Chat attiva: **{dati_utente['chat_attiva']}**")
@@ -124,7 +143,6 @@ with st.sidebar:
             dati_utente["chat_attiva"] = nome_chat
             st.rerun()
 
-#--------------- Aggiunto il bottone per rinominare la chat ----------------
     st.markdown("Rinomina Chat")
     nuovo_nome_input = st.text_input("Nuovo nome per la chat", value=dati_utente["chat_attiva"])
     if st.button("Rinomina chat"):
@@ -140,7 +158,31 @@ with st.sidebar:
             dati_utente["chat_attiva"] = nuovo_nome
             st.success(f"Chat rinominata in: {nuovo_nome}")
             st.rerun()
-#------------------------------------------------------------------------------
+
+#----------------- Nuova funzionalità Elimina chat ------------------
+    st.markdown("Elimina Chat")
+    if len(dati_utente["tutte_le_chat"]) == 1:
+        st.error("Non puoi eliminare l'unica chat esistente. Crea prima una nuova chat.")
+    else:
+        chat_da_eliminare = st.selectbox("Seleziona la chat che vuoi eliminare", list(dati_utente["tutte_le_chat"].keys()))
+        if st.button("Elimina chat"):
+            elimina_chat(st.session_state.user_id, chat_da_eliminare)
+            dati_utente["tutte_le_chat"].pop(chat_da_eliminare)
+            if dati_utente["chat_attiva"] == chat_da_eliminare: 
+                dati_utente["chat_attiva"] = list(dati_utente["tutte_le_chat"].keys())[0]
+            st.success(f"Chat '{chat_da_eliminare}' eliminata.")
+            st.rerun()
+#----------------------------------------------------------
+
+#----------------- Nuova funzionalità Elimina utente ------------------
+    st.markdown("Elimina Utente")
+    if st.button("Elimina utente"):
+        elimina_utente(st.session_state.user_id)
+        st.session_state.memoria_utenti.pop(st.session_state.user_id, None)
+        st.success(f"Utente '{st.session_state.user_id}' eliminato.")
+        st.session_state.user_id = "utente_01"
+        st.rerun()
+#----------------------------------------------------------
 
 chat_attiva = dati_utente["chat_attiva"]
 cronologia_corrente = dati_utente["tutte_le_chat"][chat_attiva]
