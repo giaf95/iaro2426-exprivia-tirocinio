@@ -312,6 +312,43 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna
 
     return f"Calcolo completato: {fabbisogno_kw:.2f} kW. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Inserisci come parametro_richiesto ESATTAMENTE 'Potenza frigorifera totale macchina' e inserisci {fabbisogno_kw:.2f} nel campo 'valore_target'."
 
+@tool
+def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str) -> str:
+    """Usa questo tool ESCLUSIVAMENTE per calcolare il fabbisogno di VENTILAZIONE o RICAMBIO ARIA (m3/h) di un locale.
+    DIVIETO ASSOLUTO: NON INVENTARE I DATI. Se non hai l'area e il numero di persone, fermati e chiedili.
+    PARAMETRI:
+    - area_mq: metri quadri della stanza.
+    - numero_persone: quante persone occupano la stanza.
+    - tipo_locale: es. 'scuola', 'ufficio', 'palestra', 'ristorante'."""
+    print(f"\n[TOOL] Esecuzione CALCOLA_PORTATA_ARIA")
+    
+    # 1. Calcolo basato sulle persone (Fabbisogno per persona)
+    m3h_persona = 40 # Standard uffici/residenziale
+    tipo_locale_low = tipo_locale.lower()
+    if "palestra" in tipo_locale_low or "discoteca" in tipo_locale_low or "ristorante" in tipo_locale_low:
+        m3h_persona = 60
+        
+    fabbisogno_persone = numero_persone * m3h_persona
+    
+    # 2. Calcolo basato sui ricambi d'aria del volume (ACH)
+    altezza_media = 3.0 # Assumiamo 3 metri di altezza standard
+    volume = area_mq * altezza_media
+    
+    ach = 2.0 # Ricambi/ora standard
+    if "scuola" in tipo_locale_low or "ristorante" in tipo_locale_low:
+        ach = 4.0
+    elif "palestra" in tipo_locale_low or "discoteca" in tipo_locale_low:
+        ach = 6.0
+        
+    fabbisogno_volumetrico = volume * ach
+    
+    # La normativa HVAC richiede di prendere il valore più alto tra i due
+    portata_finale = max(fabbisogno_persone, fabbisogno_volumetrico)
+    
+    print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} pers, locale: {tipo_locale} -> MAX tra Persone ({fabbisogno_persone}) e Volume ({fabbisogno_volumetrico}) = {portata_finale} m3/h")
+
+    return f"Calcolo completato: servono {portata_finale:.2f} m3/h di ricambio aria. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Inserisci come parametro_richiesto ESATTAMENTE 'Portata Massima Mandata Standard' e inserisci {portata_finale:.2f} nel campo 'valore_target'."
+
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
 def call_model(state: AgentState):
@@ -418,7 +455,7 @@ except Exception:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico]
+tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico, calcola_portata_aria]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
