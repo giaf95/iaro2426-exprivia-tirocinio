@@ -331,8 +331,7 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
 
     #guardrail (Testo / Amnesia)
     if not tipo_locale or tipo_locale.strip() == "":
-         print("[TOOL] Tipo locale mancante. Blocco per amnesia del contesto.")
-         return "ISTRUZIONE PER L'AI: Ti manca il parametro 'tipo_locale'. Rileggi attentamente la chat precedente per capire di che locale stiamo parlando (es. palestra, ufficio, ristorante). Se lo trovi, ESEGUI NUOVAMENTE QUESTO TOOL inserendo il tipo corretto. Se non lo trovi nella chat, chiedilo all'utente."
+         tipo_locale = "generico"
 
     # 1. Calcolo basato sulle persone (Fabbisogno per persona)
     m3h_persona = 40 # Standard uffici/residenziale
