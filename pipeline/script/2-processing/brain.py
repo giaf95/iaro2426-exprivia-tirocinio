@@ -757,9 +757,13 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 
 2. IF l'utente chiede un modello per VENTILARE o garantire il RICAMBIO D'ARIA:
    - Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Tipo di locale.
-   - SE l'utente sta aggiornando i numeri, recupera il "tipo di locale" o gli altri dati invariati dalla memoria della chat precedente.
-   - SE MANCA ANCORA UN DATO: Fermati e chiedilo.
-   - SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli all'utente.
+   - SE l'utente sta aggiornando i numeri, recupera i dati invariati dalla chat.
+   - SE MANCA UN DATO: Fermati e chiedilo.
+   - SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli.
+
+3. IF l'utente chiede il CONSUMO ELETTRICO o quale modello CONVIENE/CONSUMA MENO:
+   - Usa 'calcola_consumo_elettrico' passandogli la potenza in kW e il codice del modello.
+   - NON devi cercare l'efficienza prima, il tool la troverà da solo.
 
 3. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
    - Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'. È vietato ricalcolare.
