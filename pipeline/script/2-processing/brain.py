@@ -317,7 +317,7 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna
 @tool
 def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str) -> str:
     """Usa questo tool ESCLUSIVAMENTE per calcolare il fabbisogno di VENTILAZIONE o RICAMBIO ARIA (m3/h) di un locale.
-    DIVIETO ASSOLUTO: NON INVENTARE I DATI. Se non hai l'area e il numero di persone, fermati e chiedili.
+    DIVIETO ASSOLUTO: NON INVENTARE I PARAMETRI. Se l'utente non ti ha detto ESPLICITAMENTE quanti metri quadri misura il locale e quante persone ci sono, FERMATI ASSOLUTAMENTE E CHIEDILI. Non usare MAI valori di default o inventati.
     PARAMETRI:
     - area_mq: metri quadri della stanza.
     - numero_persone: quante persone occupano la stanza.
@@ -388,9 +388,13 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
    - SE MANCA UN SOLO DATO: Fermati e chiedi SOLO i dati mancanti. NON chiamare nessun tool.
    - SE HAI TUTTI I DATI: Usa 'calcola_fabbisogno_termico' e poi 'cerca_catalogo_generico'.
 
-2. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO (es. "Portata del 061-035"):
-   - Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
-   - È ASSOLUTAMENTE VIETATO usare calcolatori o cataloghi generici.
+2. IF l'utente chiede un modello per VENTILARE o garantire il RICAMBIO D'ARIA di un ambiente:
+   - Controlla se possiedi TUTTI e 3 questi dati esatti forniti dall'utente: 1. Metri quadri, 2. Numero persone, 3. Tipo di locale.
+   - SE MANCA ANCHE SOLO UNO DI QUESTI DATI: FERMATI ASSOLUTAMENTE. NON chiamare tool. Chiedi all'utente i dati mancanti.
+   - SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'.
+
+3. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO (es. "Portata del 061-035"):
+   - Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'. È vietato ricalcolare.
 
 3. IF l'utente chiede di manutenzione, filtri o ambienti di applicazione:
    - Usa 'cerca_manuali' o 'cerca_sito_web'.
