@@ -358,6 +358,25 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
 
     return f"Calcolo completato: {portata_finale:.2f} m3/h. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Parametro: 'Portata Massima Mandata Standard'. Target: {portata_finale:.2f}."
 
+@tool
+def calcola_consumo_elettrico(potenza_resa_kw: float, efficienza_eer_cop: float) -> str:
+    """Usa questo tool per calcolare il consumo elettrico (kW assorbiti) di un modello.
+    REGOLA ANTI-INVENZIONE: Se l'utente non ti ha dato i numeri, o se non conosci l'efficienza esatta del modello, passa 0. NON inventare valori.
+    PARAMETRI:
+    - potenza_resa_kw: la potenza frigorifera o termica (kW) erogata. (inserisci 0 se manca).
+    - efficienza_eer_cop: il valore EER (raffrescamento) o COP (riscaldamento) esatto del modello. (inserisci 0 se manca)."""
+    print(f"\n[TOOL] Esecuzione CALCOLA_CONSUMO_ELETTRICO")
+
+    # --- IL GUARDRAIL FISICO ---
+    if potenza_resa_kw <= 0 or efficienza_eer_cop <= 0:
+        print("[TOOL] Dati mancanti rilevati. Blocco dell'esecuzione.")
+        return "ISTRUZIONE PER L'AI: Dati incompleti. Per calcolare il consumo devi conoscere i kW e l'indice di efficienza EER o COP. Se non conosci l'efficienza del modello, usa prima 'cerca_catalogo_specifico' per trovare il valore 'EER' o 'COP' di quel modello esatto, e poi rifai questo calcolo."
+
+    consumo_elettrico = potenza_resa_kw / efficienza_eer_cop
+    print(f"[TOOL] Calcolo: {potenza_resa_kw} kW / {efficienza_eer_cop} = {consumo_elettrico:.2f} kW elettrici")
+
+    return f"Calcolo completato: il modello assorbe circa {consumo_elettrico:.2f} kW di energia elettrica."
+
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
 def call_model(state: AgentState):
@@ -392,25 +411,29 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 
 1. IF l'utente chiede un modello per CONDIZIONARE, RAFFRESCARE o RISCALDARE un ambiente:
    - Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Temp. Esterna, 4. Temp. Interna.
-   - SE l'utente fa un follow-up (es. "e se fosse 300 mq?"), recupera i dati invariati dalla cronologia.
+   - SE l'utente fa un follow-up, recupera i dati invariati dalla cronologia.
    - SE CONTINUA A MANCARE UN DATO: Fermati e chiedilo.
    - SE HAI TUTTI I DATI: Usa 'calcola_fabbisogno_termico' e poi 'cerca_catalogo_generico'.
 
 2. IF l'utente chiede un modello per VENTILARE o garantire il RICAMBIO D'ARIA:
    - Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Tipo di locale.
-   - SE l'utente sta aggiornando i numeri, recupera il "tipo di locale" o gli altri dati invariati dalla memoria della chat precedente.
-   - SE MANCA ANCORA UN DATO: Fermati e chiedilo.
-   - SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli all'utente.
+   - SE l'utente sta aggiornando i numeri, recupera i dati invariati dalla chat.
+   - SE MANCA UN DATO: Fermati e chiedilo.
+   - SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli.
 
-3. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
+3. IF l'utente chiede il CONSUMO ELETTRICO o quale modello CONVIENE/CONSUMA MENO:
+   - Usa 'calcola_consumo_elettrico'.
+   - SE non conosci l'EER (per raffrescamento) o il COP (per riscaldamento) del modello, usa PRIMA 'cerca_catalogo_specifico' per trovare l'efficienza e poi fai il calcolo.
+
+4. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
    - Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'. È vietato ricalcolare.
 
-4. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
+5. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
    - Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
-- NON inventare parametri. Se non li sai, chiedili.""")
+- NON inventare parametri. Se non li sai, chiedili o cercali.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
         
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
@@ -470,7 +493,7 @@ except Exception:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico, calcola_portata_aria]
+tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico, calcola_portata_aria, calcola_consumo_elettrico]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
