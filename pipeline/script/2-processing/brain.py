@@ -318,23 +318,19 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, delta_t: flo
     return f"Calcolo completato: {fabbisogno_kw:.2f} kW. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Inserisci come parametro_richiesto ESATTAMENTE 'Potenza frigorifera totale macchina' e inserisci {fabbisogno_kw:.2f} nel campo 'valore_target'."
 
 @tool
-def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str = "") -> str:
+def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str) -> str:
     """Usa questo tool per calcolare il fabbisogno di ventilazione (m3/h).
-    REGOLA ANTI-INVENZIONE: Se l'utente NON ti ha scritto i numeri esatti nel messaggio, DEVI passare 0 (zero). Se non sai il tipo di locale, non inventarlo e lascia la stringa vuota "".
+    REGOLA ANTI-INVENZIONE: Se l'utente NON ti ha scritto i numeri esatti nel messaggio, DEVI passare 0 (zero) ai parametri area_mq e numero_persone.
     PARAMETRI:
     - area_mq: metri quadri (inserisci 0 se non forniti).
     - numero_persone: quantità di persone (inserisci 0 se non fornite).
-    - tipo_locale: es. 'scuola', 'palestra', 'ufficio'. (lascia "" se non lo sai)."""
+    - tipo_locale: es. 'scuola', 'palestra', 'ufficio'."""
     print(f"\n[TOOL] Esecuzione CALCOLA_PORTATA_ARIA")
     
-    #guardrail (Numeri)
+    #guardrail
     if area_mq <= 0 or numero_persone <= 0:
-        print("[TOOL] Dati numerici mancanti rilevati. Blocco dell'esecuzione.")
+        print("[TOOL] Dati mancanti rilevati. Blocco dell'esecuzione.")
         return "ISTRUZIONE PER L'AI: Dati incompleti. FERMATI e NON usare il catalogo generico. Rispondi all'utente chiedendo di fornirti i metri quadri e il numero di persone."
-
-    #guardrail (Testo / Amnesia)
-    if not tipo_locale or tipo_locale.strip() == "":
-         tipo_locale = "generico"
 
     # 1. Calcolo basato sulle persone (Fabbisogno per persona)
     m3h_persona = 40 # Standard uffici/residenziale
@@ -356,6 +352,7 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
         
     fabbisogno_volumetrico = volume * ach
     
+    # Prendi il valore più alto
     # Prendi il valore più alto
     portata_finale = max(fabbisogno_persone, fabbisogno_volumetrico)
     
