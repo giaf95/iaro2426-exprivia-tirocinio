@@ -358,6 +358,25 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
 
     return f"Calcolo completato: {portata_finale:.2f} m3/h. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Parametro: 'Portata Massima Mandata Standard'. Target: {portata_finale:.2f}."
 
+@tool
+def calcola_consumo_elettrico(potenza_resa_kw: float, efficienza_eer_cop: float) -> str:
+    """Usa questo tool per calcolare il consumo elettrico (kW assorbiti) di un modello.
+    REGOLA ANTI-INVENZIONE: Se l'utente non ti ha dato i numeri, o se non conosci l'efficienza esatta del modello, passa 0. NON inventare valori.
+    PARAMETRI:
+    - potenza_resa_kw: la potenza frigorifera o termica (kW) erogata. (inserisci 0 se manca).
+    - efficienza_eer_cop: il valore EER (raffrescamento) o COP (riscaldamento) esatto del modello. (inserisci 0 se manca)."""
+    print(f"\n[TOOL] Esecuzione CALCOLA_CONSUMO_ELETTRICO")
+
+    # --- IL GUARDRAIL FISICO ---
+    if potenza_resa_kw <= 0 or efficienza_eer_cop <= 0:
+        print("[TOOL] Dati mancanti rilevati. Blocco dell'esecuzione.")
+        return "ISTRUZIONE PER L'AI: Dati incompleti. Per calcolare il consumo devi conoscere i kW e l'indice di efficienza EER o COP. Se non conosci l'efficienza del modello, usa prima 'cerca_catalogo_specifico' per trovare il valore 'EER' o 'COP' di quel modello esatto, e poi rifai questo calcolo."
+
+    consumo_elettrico = potenza_resa_kw / efficienza_eer_cop
+    print(f"[TOOL] Calcolo: {potenza_resa_kw} kW / {efficienza_eer_cop} = {consumo_elettrico:.2f} kW elettrici")
+
+    return f"Calcolo completato: il modello assorbe circa {consumo_elettrico:.2f} kW di energia elettrica."
+
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
 def call_model(state: AgentState):
@@ -468,7 +487,7 @@ except Exception:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico, calcola_portata_aria]
+tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico, calcola_portata_aria, calcola_consumo_elettrico]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
