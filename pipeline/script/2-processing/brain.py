@@ -314,14 +314,19 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna
 
 @tool
 def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE per calcolare il fabbisogno di VENTILAZIONE o RICAMBIO ARIA (m3/h) di un locale.
-    DIVIETO ASSOLUTO: NON INVENTARE I PARAMETRI. Se l'utente non ti ha detto ESPLICITAMENTE quanti metri quadri misura il locale e quante persone ci sono, FERMATI ASSOLUTAMENTE E CHIEDILI. Non usare MAI valori di default o inventati.
+    """Usa questo tool per calcolare il fabbisogno di ventilazione (m3/h).
+    REGOLA ANTI-INVENZIONE: Se l'utente NON ti ha scritto i numeri esatti nel messaggio, DEVI passare 0 (zero) ai parametri area_mq e numero_persone.
     PARAMETRI:
-    - area_mq: metri quadri della stanza.
-    - numero_persone: quante persone occupano la stanza.
-    - tipo_locale: es. 'scuola', 'ufficio', 'palestra', 'ristorante'."""
+    - area_mq: metri quadri (inserisci 0 se non forniti).
+    - numero_persone: quantità di persone (inserisci 0 se non fornite).
+    - tipo_locale: es. 'scuola', 'palestra', 'ufficio'."""
     print(f"\n[TOOL] Esecuzione CALCOLA_PORTATA_ARIA")
     
+    #guardrail
+    if area_mq <= 0 or numero_persone <= 0:
+        print("[TOOL] Dati mancanti rilevati. Blocco dell'esecuzione.")
+        return "ISTRUZIONE PER L'AI: Dati incompleti. FERMATI e NON usare il catalogo generico. Rispondi all'utente chiedendo di fornirti i metri quadri e il numero di persone."
+
     # 1. Calcolo basato sulle persone (Fabbisogno per persona)
     m3h_persona = 40 # Standard uffici/residenziale
     tipo_locale_low = tipo_locale.lower()
@@ -342,12 +347,12 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str) 
         
     fabbisogno_volumetrico = volume * ach
     
-    # La normativa HVAC richiede di prendere il valore più alto tra i due
+    # Prendi il valore più alto
     portata_finale = max(fabbisogno_persone, fabbisogno_volumetrico)
     
-    print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} pers, locale: {tipo_locale} -> MAX tra Persone ({fabbisogno_persone}) e Volume ({fabbisogno_volumetrico}) = {portata_finale} m3/h")
+    print(f"[TOOL] MAX tra Persone ({fabbisogno_persone}) e Volume ({fabbisogno_volumetrico}) = {portata_finale} m3/h")
 
-    return f"Calcolo completato: servono {portata_finale:.2f} m3/h di ricambio aria. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Inserisci come parametro_richiesto ESATTAMENTE 'Portata Massima Mandata Standard' e inserisci {portata_finale:.2f} nel campo 'valore_target'."
+    return f"Calcolo completato: {portata_finale:.2f} m3/h. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Parametro: 'Portata Massima Mandata Standard'. Target: {portata_finale:.2f}."
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
