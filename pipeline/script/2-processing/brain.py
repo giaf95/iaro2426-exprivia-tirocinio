@@ -315,7 +315,7 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna
 @tool
 def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str) -> str:
     """Usa questo tool ESCLUSIVAMENTE per calcolare il fabbisogno di VENTILAZIONE o RICAMBIO ARIA (m3/h) di un locale.
-    DIVIETO ASSOLUTO: NON INVENTARE I DATI. Se non hai l'area e il numero di persone, fermati e chiedili.
+    DIVIETO ASSOLUTO: NON INVENTARE I PARAMETRI. Se l'utente non ti ha detto ESPLICITAMENTE quanti metri quadri misura il locale e quante persone ci sono, FERMATI ASSOLUTAMENTE E CHIEDILI. Non usare MAI valori di default o inventati.
     PARAMETRI:
     - area_mq: metri quadri della stanza.
     - numero_persone: quante persone occupano la stanza.
