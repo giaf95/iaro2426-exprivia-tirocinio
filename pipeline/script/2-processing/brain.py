@@ -359,23 +359,56 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
     return f"Calcolo completato: {portata_finale:.2f} m3/h. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Parametro: 'Portata Massima Mandata Standard'. Target: {portata_finale:.2f}."
 
 @tool
-def calcola_consumo_elettrico(potenza_resa_kw: float, efficienza_eer_cop: float) -> str:
+def calcola_consumo_elettrico(potenza_resa_kw: float, codice_modello: str) -> str:
     """Usa questo tool per calcolare il consumo elettrico (kW assorbiti) di un modello.
-    REGOLA ANTI-INVENZIONE: Se l'utente non ti ha dato i numeri, o se non conosci l'efficienza esatta del modello, passa 0. NON inventare valori.
     PARAMETRI:
-    - potenza_resa_kw: la potenza frigorifera o termica (kW) erogata. (inserisci 0 se manca).
-    - efficienza_eer_cop: il valore EER (raffrescamento) o COP (riscaldamento) esatto del modello. (inserisci 0 se manca)."""
-    print(f"\n[TOOL] Esecuzione CALCOLA_CONSUMO_ELETTRICO")
+    - potenza_resa_kw: la potenza in kW (es. 25).
+    - codice_modello: il codice esatto del modello (es. '061-035'). Se non lo sai, chiedilo all'utente."""
+    print(f"\n[TOOL] Esecuzione CALCOLA_CONSUMO_ELETTRICO per {codice_modello} ({potenza_resa_kw} kW)")
 
-    # --- IL GUARDRAIL FISICO ---
-    if potenza_resa_kw <= 0 or efficienza_eer_cop <= 0:
-        print("[TOOL] Dati mancanti rilevati. Blocco dell'esecuzione.")
-        return "ISTRUZIONE PER L'AI: Dati incompleti. Per calcolare il consumo devi conoscere i kW e l'indice di efficienza EER o COP. Se non conosci l'efficienza del modello, usa prima 'cerca_catalogo_specifico' per trovare il valore 'EER' o 'COP' di quel modello esatto, e poi rifai questo calcolo."
+    if df_catalogo is None:
+        return "Errore: database catalogo non caricato."
 
-    consumo_elettrico = potenza_resa_kw / efficienza_eer_cop
-    print(f"[TOOL] Calcolo: {potenza_resa_kw} kW / {efficienza_eer_cop} = {consumo_elettrico:.2f} kW elettrici")
+    if potenza_resa_kw <= 0 or not codice_modello or codice_modello.strip() == "":
+        return "Dati incompleti. Chiedi all'utente i kW e il codice del modello."
 
-    return f"Calcolo completato: il modello assorbe circa {consumo_elettrico:.2f} kW di energia elettrica."
+    # 1. Pulisce il codice e cerca la riga nel DataFrame
+    codice_pulito = codice_modello.upper().replace("MODELLO", "").strip()
+    df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
+
+    if df_modello.empty:
+        return f"Modello {codice_pulito} non trovato nel catalogo. Impossibile calcolare il consumo."
+
+    # 2. Estrae in automatico le colonne EER e COP
+    eer_col = [col for col in colonne_catalogo if 'eer' in str(col).lower()]
+    cop_col = [col for col in colonne_catalogo if 'cop' in str(col).lower()]
+
+    risultati = []
+    
+    # 3. Calcola per il freddo
+    if eer_col:
+        valore_eer = df_modello.iloc[0].get(eer_col[0], "N/D")
+        try:
+            eer_float = float(str(valore_eer).replace(',', '.'))
+            consumo_freddo = potenza_resa_kw / eer_float
+            risultati.append(f"- In Raffrescamento (EER {eer_float}): assorbe {consumo_freddo:.2f} kW elettrici.")
+        except:
+            pass
+
+    # 4. Calcola per il caldo
+    if cop_col:
+        valore_cop = df_modello.iloc[0].get(cop_col[0], "N/D")
+        try:
+            cop_float = float(str(valore_cop).replace(',', '.'))
+            consumo_caldo = potenza_resa_kw / cop_float
+            risultati.append(f"- In Riscaldamento (COP {cop_float}): assorbe {consumo_caldo:.2f} kW elettrici.")
+        except:
+            pass
+
+    if not risultati:
+        return f"Non ho trovato dati di efficienza (EER/COP) validi per il modello {codice_pulito}."
+
+    return f"Calcolo completato per il modello {codice_pulito} (potenza {potenza_resa_kw} kW):\n" + "\n".join(risultati)
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
