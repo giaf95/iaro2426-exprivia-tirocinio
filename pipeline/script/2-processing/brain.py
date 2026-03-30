@@ -359,70 +359,81 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
     return f"Calcolo completato: {portata_finale:.2f} m3/h. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Parametro: 'Portata Massima Mandata Standard'. Target: {portata_finale:.2f}."
 
 @tool
-def calcola_consumo_elettrico(codice_modello: str, kw_richiesti: float = 0.0) -> str:
-    """Usa questo tool per calcolare il consumo elettrico (kW assorbiti) di un modello.
+def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) -> str:
+    """Usa questo tool per calcolare il consumo elettrico (kW assorbiti) di uno o più modelli.
     PARAMETRI:
-    - codice_modello: il codice esatto del modello (es. '061-035').
-    - kw_richiesti: (Opzionale) Estrai il numero di kW dal messaggio dell'utente. Se non specificato, non passarlo."""
-    print(f"\n[TOOL] Esecuzione CALCOLA_CONSUMO_ELETTRICO -> Modello: {codice_modello} | Input kW: {kw_richiesti}")
+    - codici_modelli: i codici dei modelli da analizzare. Se l'utente chiede un confronto tra più modelli, inseriscili tutti separati da virgola (es. '061-035, 091-051').
+    - kw_richiesti: (Opzionale) Estrai il numero di kW dal messaggio dell'utente. Se non specificato, lascia 0.0."""
+    print(f"\n[TOOL] Esecuzione CALCOLA_CONSUMO_ELETTRICO -> Modelli: {codici_modelli} | Input kW: {kw_richiesti}")
 
     if df_catalogo is None:
         return "Errore: database catalogo non caricato."
 
-    if not codice_modello or codice_modello.strip() == "":
+    if not codici_modelli or codici_modelli.strip() == "":
         return "Dati incompleti. Chiedi all'utente il codice del modello."
 
-    # 1. Trova il modello nel file Excel
-    codice_pulito = codice_modello.upper().replace("MODELLO", "").strip()
-    df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
+    # 1. pulisce la stringa dell'AI e la divide in una lista (gestendo "e", "o", "oppure", virgole)
+    stringa_pulita = codici_modelli.lower().replace(' e ', ',').replace(' o ', ',').replace(' oppure ', ',')
+    lista_codici = [c.strip() for c in stringa_pulita.split(',') if c.strip()]
 
-    if df_modello.empty:
-        return f"Mi dispiace, ma il modello {codice_pulito} non è stato trovato nel catalogo."
+    risultati_finali = []
 
-    risultati = []
+    # 2.ciclo for: calcola il consumo per ogni modello richiesto
+    for codice_singolo in lista_codici:
+        codice_pulito = codice_singolo.upper().replace("MODELLO", "").strip()
+        df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
 
-    # 2. AUTO-RECUPERO kW: Se l'AI non passa i kW, peschiamo la potenza di targa
-    if kw_richiesti <= 0:
-        col_potenza = [col for col in colonne_catalogo if 'potenza frigorifera totale' in str(col).lower()]
-        if col_potenza:
-            val_potenza = df_modello.iloc[0].get(col_potenza[0], 0)
+        if df_modello.empty:
+            risultati_finali.append(f"Modello {codice_pulito} non trovato nel catalogo.")
+            continue
+
+        risultati = []
+        kw_attuali = kw_richiesti
+
+        # auto-recupero
+        if kw_attuali <= 0:
+            col_potenza = [col for col in colonne_catalogo if 'potenza frigorifera totale' in str(col).lower()]
+            if col_potenza:
+                val_potenza = df_modello.iloc[0].get(col_potenza[0], 0)
+                try:
+                    kw_attuali = float(str(val_potenza).replace(',', '.'))
+                    risultati.append(f"*(Nota: calcolo basato su potenza di targa di {kw_attuali} kW)*")
+                except:
+                    risultati_finali.append(f"Modello {codice_pulito}: Impossibile determinare i kW.")
+                    continue
+            else:
+                 risultati_finali.append(f"Modello {codice_pulito}: Impossibile determinare i kW.")
+                 continue
+
+        # estrazione di EER e COP
+        eer_col = [col for col in colonne_catalogo if 'eer' in str(col).lower()]
+        cop_col = [col for col in colonne_catalogo if 'cop' in str(col).lower()]
+
+        if eer_col:
+            valore_eer = df_modello.iloc[0].get(eer_col[0], "N/D")
             try:
-                kw_richiesti = float(str(val_potenza).replace(',', '.'))
-                risultati.append(f"*(Nota: non avendo specificato il fabbisogno, ho calcolato il consumo basandomi sulla potenza massima di targa della macchina: {kw_richiesti} kW)*")
+                eer_float = float(str(valore_eer).replace(',', '.'))
+                consumo_freddo = kw_attuali / eer_float
+                risultati.append(f"- Raffrescamento (EER {eer_float}): assorbe circa {consumo_freddo:.2f} kW elettrici.")
             except:
-                # Se fallisce anche questo, diamo all'AI un testo discorsivo da ripetere all'utente, così non va in loop
-                return f"Ho trovato il modello {codice_pulito}, ma non conoscendo il tuo fabbisogno in kW non posso calcolare il consumo. Potresti dirmi quanti kW ti servono?"
+                pass
+
+        if cop_col:
+            valore_cop = df_modello.iloc[0].get(cop_col[0], "N/D")
+            try:
+                cop_float = float(str(valore_cop).replace(',', '.'))
+                consumo_caldo = kw_attuali / cop_float
+                risultati.append(f"- Riscaldamento (COP {cop_float}): assorbe circa {consumo_caldo:.2f} kW elettrici.")
+            except:
+                pass
+
+        if risultati:
+            risultati_finali.append(f"**Modello {codice_pulito}** (Carico: {kw_attuali} kW):\n" + "\n".join(risultati))
         else:
-             return f"Ho trovato il modello {codice_pulito}, ma ho bisogno di sapere quanti kW ti servono per calcolare il consumo."
+            risultati_finali.append(f"Modello {codice_pulito}: dati di efficienza validi non trovati.")
 
-    # 3. Estrae in automatico le colonne EER e COP
-    eer_col = [col for col in colonne_catalogo if 'eer' in str(col).lower()]
-    cop_col = [col for col in colonne_catalogo if 'cop' in str(col).lower()]
-
-    # 4. Calcola per il freddo
-    if eer_col:
-        valore_eer = df_modello.iloc[0].get(eer_col[0], "N/D")
-        try:
-            eer_float = float(str(valore_eer).replace(',', '.'))
-            consumo_freddo = kw_richiesti / eer_float
-            risultati.append(f"- In Raffrescamento (EER {eer_float}): assorbe circa {consumo_freddo:.2f} kW elettrici.")
-        except:
-            pass
-
-    # 5. Calcola per il caldo
-    if cop_col:
-        valore_cop = df_modello.iloc[0].get(cop_col[0], "N/D")
-        try:
-            cop_float = float(str(valore_cop).replace(',', '.'))
-            consumo_caldo = kw_richiesti / cop_float
-            risultati.append(f"- In Riscaldamento (COP {cop_float}): assorbe circa {consumo_caldo:.2f} kW elettrici.")
-        except:
-            pass
-
-    if not risultati:
-        return f"Non ho trovato dati di efficienza validi per il modello {codice_pulito}."
-
-    return f"Calcolo completato per il modello {codice_pulito} (Carico: {kw_richiesti} kW):\n" + "\n".join(risultati)
+    # 3. restituisce tutti i risultati uniti all'AI
+    return "\n\n".join(risultati_finali)
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
