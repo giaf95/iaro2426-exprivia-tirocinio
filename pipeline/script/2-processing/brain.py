@@ -435,7 +435,7 @@ def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) ->
             risultati_finali.append(f"Modello {codice_pulito}: dati di efficienza validi non trovati.")
 
     # 3. restituisce tutti i risultati uniti all'AI
-    return "\n\n".join(risultati_finali)
+    return "\n\n".join(risultati_finali) + "\n\nISTRUZIONE PER L'AI: I calcoli sono completati. ORA FERMATI. NON richiamare più questo tool. Scrivi la risposta finale all'utente."
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
