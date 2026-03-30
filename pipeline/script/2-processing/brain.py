@@ -361,11 +361,11 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
     return f"Calcolo completato: {portata_finale:.2f} m3/h. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Parametro: 'Portata Massima Mandata Standard'. Target: {portata_finale:.2f}."
 
 @tool
-def calcola_consumo_elettrico(kw_richiesti: float, codice_modello: str) -> str:
+def calcola_consumo_elettrico(codice_modello: str, kw_richiesti: float = 0.0) -> str:
     """Usa questo tool per calcolare il consumo elettrico (kW assorbiti) di un modello.
     PARAMETRI:
-    - kw_richiesti: Estrai il numero di kW dal messaggio dell'utente (es. 25). Se l'utente non lo ha scritto, passa 0.
-    - codice_modello: il codice esatto del modello (es. '061-035')."""
+    - codice_modello: il codice esatto del modello (es. '061-035').
+    - kw_richiesti: (Opzionale) Estrai il numero di kW dal messaggio dell'utente. Se non specificato, non passarlo."""
     print(f"\n[TOOL] Esecuzione CALCOLA_CONSUMO_ELETTRICO -> Modello: {codice_modello} | Input kW: {kw_richiesti}")
 
     if df_catalogo is None:
@@ -379,22 +379,23 @@ def calcola_consumo_elettrico(kw_richiesti: float, codice_modello: str) -> str:
     df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
 
     if df_modello.empty:
-        return f"Modello {codice_pulito} non trovato nel catalogo."
+        return f"Mi dispiace, ma il modello {codice_pulito} non è stato trovato nel catalogo."
 
     risultati = []
 
-    # 2. AUTO-RECUPERO kW: Se l'AI passa 0 per errore, peschiamo la potenza di targa dal catalogo!
+    # 2. AUTO-RECUPERO kW: Se l'AI non passa i kW, peschiamo la potenza di targa
     if kw_richiesti <= 0:
         col_potenza = [col for col in colonne_catalogo if 'potenza frigorifera totale' in str(col).lower()]
         if col_potenza:
             val_potenza = df_modello.iloc[0].get(col_potenza[0], 0)
             try:
                 kw_richiesti = float(str(val_potenza).replace(',', '.'))
-                risultati.append(f"*(Nota: l'utente non ha specificato il carico, calcolo basato sulla potenza nominale di targa: {kw_richiesti} kW)*")
+                risultati.append(f"*(Nota: non avendo specificato il fabbisogno, ho calcolato il consumo basandomi sulla potenza massima di targa della macchina: {kw_richiesti} kW)*")
             except:
-                return "Non riesco a determinare i kW. Chiedili all'utente."
+                # Se fallisce anche questo, diamo all'AI un testo discorsivo da ripetere all'utente, così non va in loop
+                return f"Ho trovato il modello {codice_pulito}, ma non conoscendo il tuo fabbisogno in kW non posso calcolare il consumo. Potresti dirmi quanti kW ti servono?"
         else:
-             return "Non riesco a determinare i kW. Chiedili all'utente."
+             return f"Ho trovato il modello {codice_pulito}, ma ho bisogno di sapere quanti kW ti servono per calcolare il consumo."
 
     # 3. Estrae in automatico le colonne EER e COP
     eer_col = [col for col in colonne_catalogo if 'eer' in str(col).lower()]
