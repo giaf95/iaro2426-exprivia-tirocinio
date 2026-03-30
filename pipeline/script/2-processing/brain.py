@@ -364,7 +364,7 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
 def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) -> str:
     """Usa questo tool per calcolare il consumo elettrico (kW assorbiti) di uno o più modelli.
     PARAMETRI:
-    - codici_modelli: i codici dei modelli da analizzare. Se l'utente chiede un confronto tra più modelli, inseriscili tutti separati da virgola (es. '061-035, 091-051').
+    - codici_modelli: i codici dei modelli da analizzare. Se l'utente chiede un confronto tra più modelli, inseriscili tutti separati da virgola (es. 'modelloA, modelloB').
     - kw_richiesti: (Opzionale) Estrai il numero di kW dal messaggio dell'utente. Se non specificato, lascia 0.0."""
     print(f"\n[TOOL] Esecuzione CALCOLA_CONSUMO_ELETTRICO -> Modelli: {codici_modelli} | Input kW: {kw_richiesti}")
 
