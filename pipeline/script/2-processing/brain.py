@@ -506,9 +506,10 @@ def verifica_prevalenza_canali(codici_modelli: str, prevalenza_richiesta_pa: flo
 
 @tool
 def consulta_dizionario_catalogo(parametro_da_cercare: str = "") -> str:
-    """Usa questo tool per capire il significato delle colonne del catalogo Excel, quali parametri sono tracciati (es. gas, rumorosità, trifase) e come interpretarli.
+    """Usa ESCLUSIVAMENTE questo tool per rispondere a domande su COSA c'è nel catalogo, sul SIGNIFICATO delle caratteristiche, o su COME vengono misurati i parametri (es. rumorosità, decibel, tipo di gas, alimentazione, trifase).
+    REGOLA: Se l'utente NON chiede un calcolo matematico, ma chiede spiegazioni discorsive, usa sempre questo tool.
     PARAMETRI:
-    - parametro_da_cercare: (Opzionale) La parola chiave da cercare. Lascia vuoto per leggere tutto."""
+    - parametro_da_cercare: (Opzionale) La parola chiave da cercare (es. 'rumorosità', 'gas'). Lascia vuoto per leggere tutto."""
     print(f"\n[TOOL] Esecuzione CONSULTA_DIZIONARIO -> Ricerca: '{parametro_da_cercare}'")
 
     cartella_corrente = os.path.dirname(os.path.abspath(__file__))
@@ -596,10 +597,15 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 
 6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
    - Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
+                                              
+7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
+   - Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
-- NON inventare parametri. Se non li sai, chiedili o cercali.""")
+- NON inventare parametri. Se non li sai, chiedili.
+- DIVIETO DI CALCOLO A VUOTO: Se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
+- DIVIETO DI JSON: È severamente vietato rispondere mostrando codice JSON grezzo all'utente.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
         
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
