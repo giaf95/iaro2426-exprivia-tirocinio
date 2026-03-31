@@ -511,13 +511,14 @@ def consulta_dizionario_catalogo(parametro_da_cercare: str = "") -> str:
     - parametro_da_cercare: (Opzionale) La parola chiave da cercare. Lascia vuoto per leggere tutto."""
     print(f"\n[TOOL] Esecuzione CONSULTA_DIZIONARIO -> Ricerca: '{parametro_da_cercare}'")
 
-    percorso_file = "dizionario_catalogo.txt"
+    cartella_corrente = os.path.dirname(os.path.abspath(__file__))
+    percorso_file = os.path.join(cartella_corrente, "..", "..", "data", "3-user_interface", "dizionario_catalogo.txt")
 
     try:
         with open(percorso_file, 'r', encoding='utf-8') as f:
             contenuto = f.read()
     except FileNotFoundError:
-        return "Errore: Il file 'dizionario_catalogo.txt' non è stato trovato. Avvisa l'utente."
+        return "Errore: Il file del dizionario non è stato trovato. Avvisa l'utente."
 
     if parametro_da_cercare and parametro_da_cercare.strip() != "":
         paragrafi = contenuto.split('\n\n')
