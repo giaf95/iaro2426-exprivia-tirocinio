@@ -762,13 +762,15 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
    - SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli.
 
 3. IF l'utente chiede il CONSUMO ELETTRICO o quale modello CONVIENE/CONSUMA MENO:
-   - Usa 'calcola_consumo_elettrico' passandogli la potenza in kW e il codice del modello.
-   - NON devi cercare l'efficienza prima, il tool la troverà da solo.
+   - Usa 'calcola_consumo_elettrico'. NON cercare l'efficienza prima, il tool la troverà da solo.
 
-3. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
-   - Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'. È vietato ricalcolare.
+4. IF l'utente chiede la PREVALENZA o la COMPATIBILITÀ CON I CANALI (perdita di carico / Pascal):
+   - Usa 'verifica_prevalenza_canali' passando i modelli e i Pascal richiesti.
 
-4. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
+5. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
+   - Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
+
+6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
    - Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
 
 7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
@@ -869,17 +871,7 @@ except Exception:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [#cerca_catalogo_specifico, 
-         #cerca_catalogo_generico, 
-         #cerca_sito_web, cerca_manuali, 
-         #calcola_fabbisogno_termico, 
-         #calcola_portata_aria, 
-         #calcola_consumo_elettrico, 
-         #verifica_prevalenza_canali,
-         #consulta_dizionario_catalogo,
-         #prepara_dati_grafico,
-         estrai_dati_dinamici,
-         genera_grafico_avanzato]
+tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico, calcola_portata_aria, calcola_consumo_elettrico, verifica_prevalenza_canali]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
