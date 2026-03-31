@@ -505,13 +505,14 @@ def verifica_prevalenza_canali(codici_modelli: str, prevalenza_richiesta_pa: flo
     return testo_ritorno
 
 @tool
-def consulta_dizionario_catalogo(parametro_da_cercare: str = "") -> str:
+def consulta_dizionario_catalogo(parola_chiave: str = "") -> str:
     """Usa ESCLUSIVAMENTE questo tool per rispondere a domande su COSA c'è nel catalogo, sul SIGNIFICATO delle caratteristiche, o su COME vengono misurati i parametri (es. rumorosità, decibel, tipo di gas, alimentazione, trifase).
     REGOLA: Se l'utente NON chiede un calcolo matematico, ma chiede spiegazioni discorsive, usa sempre questo tool.
     PARAMETRI:
-    - parametro_da_cercare: (Opzionale) La parola chiave da cercare (es. 'rumorosità', 'gas'). Lascia vuoto per leggere tutto."""
-    print(f"\n[TOOL] Esecuzione CONSULTA_DIZIONARIO -> Ricerca: '{parametro_da_cercare}'")
+    - parola_chiave: (Opzionale) La parola da cercare (es. 'rumorosità', 'gas'). Lascia vuoto per leggere tutto."""
+    print(f"\n[TOOL] Esecuzione CONSULTA_DIZIONARIO -> Ricerca: '{parola_chiave}'")
 
+    # Percorso relativo sicuro
     cartella_corrente = os.path.dirname(os.path.abspath(__file__))
     percorso_file = os.path.join(cartella_corrente, "..", "..", "data", "3-user_interface", "dizionario_catalogo.txt")
 
@@ -521,23 +522,23 @@ def consulta_dizionario_catalogo(parametro_da_cercare: str = "") -> str:
     except FileNotFoundError:
         return "Errore: Il file del dizionario non è stato trovato. Avvisa l'utente."
 
-    if parametro_da_cercare and parametro_da_cercare.strip() != "":
+    if parola_chiave and parola_chiave.strip() != "":
         paragrafi = contenuto.split('\n\n')
         risultati = []
         
         # ciclo for classico
         for p in paragrafi:
-            if parametro_da_cercare.lower() in p.lower():
+            if parola_chiave.lower() in p.lower():
                 risultati.append(p)
 
         if len(risultati) > 0:
-            testo_ritorno = f"Risultati trovati per '{parametro_da_cercare}':\n\n"
+            testo_ritorno = f"Risultati trovati per '{parola_chiave}':\n\n"
             for r in risultati:
                 testo_ritorno = testo_ritorno + r + "\n\n"
             
             return testo_ritorno + "ISTRUZIONE PER L'AI: Usa queste info per rispondere e poi fermati."
         else:
-            return f"Nessuna voce trovata per '{parametro_da_cercare}'. Ecco tutto il dizionario:\n\n{contenuto}\n\nISTRUZIONE: Usa queste info per rispondere e poi fermati."
+            return f"Nessuna voce trovata per '{parola_chiave}'. Ecco tutto il dizionario:\n\n{contenuto}\n\nISTRUZIONE: Usa queste info per rispondere e poi fermati."
 
     return f"Ecco il dizionario completo:\n\n{contenuto}\n\nISTRUZIONE PER L'AI: Usa queste info per rispondere e poi fermati."
 
@@ -678,8 +679,8 @@ tools = [cerca_catalogo_specifico,
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
-llm = ChatOllama(model="qwen2.5:3b-instruct-q8_0", temperature=0, num_thread=4, num_ctx=2048)
-llm_con_tools = llm.bind_tools(tools, parallel_tool_calls=False)
+llm = ChatOllama(model="qwen2.5:7b-instruct-q4_K_M", temperature=0, num_thread=4, num_ctx=2048)
+llm_with_tools = llm.bind_tools(tools)
 
 tool_node = ToolNode(tools)
 
