@@ -772,23 +772,15 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 
 6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
    - Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
-
+                                              
 7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
-- Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
-
-8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o una TABELLA visiva:
-- Usa il tool 'prepara_dati_grafico' SOLO E SOLTANTO SE l'utente ha scritto testualmente una di queste tre parole.
-- NON usare questo tool di tua iniziativa per "abbellire" i risultati. Per le ricerche normali sei OBBLIGATO a usare sempre 'cerca_catalogo_generico'.
-
-9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati per Python":
-- Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente in modo che possa generare il codice corretto.
-
-10. IF l'utente chiede di creare un GRAFICO, un DIAGRAMMA o PLOTTARE i dati che sono appena stati estratti o filtrati nel CSV:
-- Usa il tool 'genera_grafico_avanzato' passando la frase intera dell'utente.
+   - Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
-- NON inventare parametri. Se non li sai, chiedili.""")
+- NON inventare parametri. Se non li sai, chiedili.
+- DIVIETO DI CALCOLO A VUOTO: Se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
+- DIVIETO DI JSON: È severamente vietato rispondere mostrando codice JSON grezzo all'utente.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
