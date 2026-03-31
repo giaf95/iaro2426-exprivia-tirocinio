@@ -532,15 +532,15 @@ def consulta_dizionario_catalogo(parola_chiave: str = "") -> str:
                 risultati.append(p)
 
         if len(risultati) > 0:
-            testo_ritorno = f"Risultati trovati per '{parola_chiave}':\n\n"
+            testo_ritorno = f"DATI ESTRATTI PER '{parola_chiave}':\n"
             for r in risultati:
                 testo_ritorno = testo_ritorno + r + "\n\n"
             
-            return testo_ritorno + "ISTRUZIONE PER L'AI: Usa queste info per rispondere e poi fermati."
+            return testo_ritorno + "=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Hai trovato i dati! ORA FERMATI. NON chiamare più nessun tool. Scrivi immediatamente la risposta finale all'utente usando SOLO questi dati."
         else:
-            return f"Nessuna voce trovata per '{parola_chiave}'. Ecco tutto il dizionario:\n\n{contenuto}\n\nISTRUZIONE: Usa queste info per rispondere e poi fermati."
+            return f"Nessuna voce trovata per '{parola_chiave}'. Ecco il dizionario:\n\n{contenuto}\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: ORA FERMATI. NON chiamare più nessun tool. Scrivi la risposta finale all'utente e concludi."
 
-    return f"Ecco il dizionario completo:\n\n{contenuto}\n\nISTRUZIONE PER L'AI: Usa queste info per rispondere e poi fermati."
+    return f"Ecco il dizionario completo:\n\n{contenuto}\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: ORA FERMATI. NON chiamare più nessun tool. Scrivi la risposta finale all'utente e concludi."
 
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
@@ -606,7 +606,8 @@ REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
 - NON inventare parametri. Se non li sai, chiedili.
 - DIVIETO DI CALCOLO A VUOTO: Se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
-- DIVIETO DI JSON: È severamente vietato rispondere mostrando codice JSON grezzo all'utente.""")
+- DIVIETO DI JSON: È severamente vietato rispondere mostrando codice JSON grezzo all'utente.
+- REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da QUALSIASI tool, ti è ASSOLUTAMENTE VIETATO richiamare lo stesso tool o chiamarne altri. Devi IMMEDIATAMENTE formulare la risposta discorsiva per l'utente e fermarti.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
         
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
@@ -677,7 +678,7 @@ tools = [cerca_catalogo_specifico,
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
-llm = ChatOllama(model="qwen2.5:7b-instruct-q4_K_M", temperature=0, num_thread=4, num_ctx=2048)
+llm = ChatOllama(model="qwen2.5:3b-instruct-q8_0", temperature=0, num_thread=4, num_ctx=2048)
 llm_with_tools = llm.bind_tools(tools)
 
 tool_node = ToolNode(tools)
