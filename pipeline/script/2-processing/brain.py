@@ -500,7 +500,7 @@ def verifica_prevalenza_canali(codici_modelli: str, prevalenza_richiesta_pa: flo
         testo_ritorno = testo_ritorno + r + "\n\n"
 
     # blocco di sicurezza per evitare loop
-    testo_ritorno = testo_ritorno + "ISTRUZIONE PER L'AI: I calcoli sono completati. ORA FERMATI. NON richiamare più questo tool. Scrivi la risposta finale all'utente."
+    testo_ritorno = testo_ritorno + "=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Il calcolo della prevalenza è completato! ORA FERMATI. NON chiamare nessun altro tool (vietato usare il dizionario o altri calcoli). Scrivi immediatamente la risposta finale all'utente dicendo chiaramente se il modello è COMPATIBILE o NON COMPATIBILE."
     
     return testo_ritorno
 
@@ -548,7 +548,7 @@ def consulta_dizionario_catalogo(parola_chiave: str = "") -> str:
 def call_model(state: AgentState):
     print("\nL'intelligenza artificiale sta analizzando i dati e generating la risposta...")
     messages = state["messages"]
-    response = llm_with_tools.invoke(messages)
+    response = llm_con_tools.invoke(messages)
     
     # printa a schermo le intenzioni dell'ai per capire cosa sta combinando
     if response.tool_calls:
@@ -665,7 +665,7 @@ tools = [cerca_catalogo_specifico,
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
 llm = ChatOllama(model="qwen2.5:3b-instruct-q8_0", temperature=0, num_thread=4, num_ctx=2048)
-llm_with_tools = llm.bind_tools(tools)
+llm_con_tools = llm.bind_tools(tools, parallel_tool_calls=False)
 
 tool_node = ToolNode(tools)
 
