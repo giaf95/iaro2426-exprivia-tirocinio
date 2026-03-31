@@ -504,8 +504,41 @@ def verifica_prevalenza_canali(codici_modelli: str, prevalenza_richiesta_pa: flo
     
     return testo_ritorno
 
-    # 3. restituisce tutti i risultati uniti all'AI
-    return "\n\n".join(risultati_finali) + "\n\nISTRUZIONE PER L'AI: I calcoli sono completati. ORA FERMATI. NON richiamare più questo tool. Scrivi la risposta finale all'utente."
+@tool
+def consulta_dizionario_catalogo(parametro_da_cercare: str = "") -> str:
+    """Usa questo tool per capire il significato delle colonne del catalogo Excel, quali parametri sono tracciati (es. gas, rumorosità, trifase) e come interpretarli.
+    PARAMETRI:
+    - parametro_da_cercare: (Opzionale) La parola chiave da cercare. Lascia vuoto per leggere tutto."""
+    print(f"\n[TOOL] Esecuzione CONSULTA_DIZIONARIO -> Ricerca: '{parametro_da_cercare}'")
+
+    percorso_file = "dizionario_catalogo.txt"
+
+    try:
+        with open(percorso_file, 'r', encoding='utf-8') as f:
+            contenuto = f.read()
+    except FileNotFoundError:
+        return "Errore: Il file 'dizionario_catalogo.txt' non è stato trovato. Avvisa l'utente."
+
+    if parametro_da_cercare and parametro_da_cercare.strip() != "":
+        paragrafi = contenuto.split('\n\n')
+        risultati = []
+        
+        # ciclo for classico
+        for p in paragrafi:
+            if parametro_da_cercare.lower() in p.lower():
+                risultati.append(p)
+
+        if len(risultati) > 0:
+            testo_ritorno = f"Risultati trovati per '{parametro_da_cercare}':\n\n"
+            for r in risultati:
+                testo_ritorno = testo_ritorno + r + "\n\n"
+            
+            return testo_ritorno + "ISTRUZIONE PER L'AI: Usa queste info per rispondere e poi fermati."
+        else:
+            return f"Nessuna voce trovata per '{parametro_da_cercare}'. Ecco tutto il dizionario:\n\n{contenuto}\n\nISTRUZIONE: Usa queste info per rispondere e poi fermati."
+
+    return f"Ecco il dizionario completo:\n\n{contenuto}\n\nISTRUZIONE PER L'AI: Usa queste info per rispondere e poi fermati."
+
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
@@ -625,7 +658,14 @@ except Exception:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico, calcola_portata_aria, calcola_consumo_elettrico, verifica_prevalenza_canali]
+tools = [cerca_catalogo_specifico, 
+         cerca_catalogo_generico, 
+         cerca_sito_web, cerca_manuali, 
+         calcola_fabbisogno_termico, 
+         calcola_portata_aria, 
+         calcola_consumo_elettrico, 
+         verifica_prevalenza_canali,
+         consulta_dizionario_catalogo]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
