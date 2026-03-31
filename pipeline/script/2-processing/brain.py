@@ -621,7 +621,7 @@ tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerc
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
-llm = ChatOllama(model="ollama pull llama3.1:8b-instruct-q4_K_M", temperature=0, num_thread=4, num_ctx=2048)
+llm = ChatOllama(model="llama3.1:8b-instruct-q4_K_M", temperature=0, num_thread=4, num_ctx=2048)
 llm_with_tools = llm.bind_tools(tools)
 
 tool_node = ToolNode(tools)
