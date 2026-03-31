@@ -432,6 +432,78 @@ def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) ->
         else:
             risultati_finali.append(f"Modello {codice_pulito}: dati di efficienza validi non trovati.")
 
+@tool
+def verifica_prevalenza_canali(codici_modelli: str, prevalenza_richiesta_pa: float = 0.0) -> str:
+    """Usa questo tool per verificare se i modelli hanno abbastanza prevalenza per i canali dell'aria.
+    PARAMETRI:
+    - codici_modelli: i codici dei modelli separati da virgola (es. '061-035, 091-051').
+    - prevalenza_richiesta_pa: la perdita di carico in Pascal (Pa) dell'impianto. Se non specificata, lascia 0.0."""
+    print(f"\n[TOOL] Esecuzione VERIFICA_PREVALENZA -> Modelli: {codici_modelli} | Pascal: {prevalenza_richiesta_pa}")
+
+    if df_catalogo is None:
+        return "Errore: database catalogo non caricato."
+
+    if not codici_modelli or codici_modelli.strip() == "":
+        return "Dati incompleti. Chiedi all'utente il codice del modello."
+
+    # pulisce la stringa base
+    stringa_pulita = codici_modelli.lower().replace(' e ', ',').replace(' o ', ',').replace(' oppure ', ',')
+    
+    # divide i modelli senza usare list comprehension
+    parti = stringa_pulita.split(',')
+    lista_codici = []
+    for p in parti:
+        if p.strip() != "":
+            lista_codici.append(p.strip())
+
+    risultati_finali = []
+
+    # controlla ogni singolo modello
+    for codice_singolo in lista_codici:
+        codice_pulito = codice_singolo.upper().replace("MODELLO", "").strip()
+        df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
+
+        if df_modello.empty:
+            risultati_finali.append(f"Modello {codice_pulito} non trovato.")
+            continue
+
+        # cerca la colonna della prevalenza
+        col_prevalenza = ""
+        for col in colonne_catalogo:
+            if 'prevalenza massima mandata' in str(col).lower():
+                col_prevalenza = col
+                break
+
+        if col_prevalenza == "":
+            risultati_finali.append(f"Modello {codice_pulito}: impossibile trovare i dati di prevalenza.")
+            continue
+
+        valore_prev = df_modello.iloc[0].get(col_prevalenza, 0)
+        
+        try:
+            prev_float = float(str(valore_prev).replace(',', '.'))
+        except:
+            prev_float = 0.0
+
+        # confronta i valori
+        if prevalenza_richiesta_pa <= 0:
+            risultati_finali.append(f"Modello {codice_pulito}: ha una prevalenza massima di {prev_float} Pa (richiesta non specificata).")
+        else:
+            if prev_float >= prevalenza_richiesta_pa:
+                risultati_finali.append(f"**Modello {codice_pulito}: COMPATIBILE.** Ha {prev_float} Pa, superiore ai {prevalenza_richiesta_pa} Pa richiesti.")
+            else:
+                risultati_finali.append(f"**Modello {codice_pulito}: NON COMPATIBILE.** Ha solo {prev_float} Pa, insufficiente per i {prevalenza_richiesta_pa} Pa richiesti.")
+
+    # unisce i risultati
+    testo_ritorno = ""
+    for r in risultati_finali:
+        testo_ritorno = testo_ritorno + r + "\n\n"
+
+    # blocco di sicurezza per evitare loop
+    testo_ritorno = testo_ritorno + "ISTRUZIONE PER L'AI: I calcoli sono completati. ORA FERMATI. NON richiamare più questo tool. Scrivi la risposta finale all'utente."
+    
+    return testo_ritorno
+
     # 3. restituisce tutti i risultati uniti all'AI
     return "\n\n".join(risultati_finali) + "\n\nISTRUZIONE PER L'AI: I calcoli sono completati. ORA FERMATI. NON richiamare più questo tool. Scrivi la risposta finale all'utente."
 
@@ -480,13 +552,15 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
    - SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli.
 
 3. IF l'utente chiede il CONSUMO ELETTRICO o quale modello CONVIENE/CONSUMA MENO:
-   - Usa 'calcola_consumo_elettrico' passandogli la potenza in kW e il codice del modello.
-   - NON devi cercare l'efficienza prima, il tool la troverà da solo.
+   - Usa 'calcola_consumo_elettrico'. NON cercare l'efficienza prima, il tool la troverà da solo.
 
-4. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
-   - Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'. È vietato ricalcolare.
+4. IF l'utente chiede la PREVALENZA o la COMPATIBILITÀ CON I CANALI (perdita di carico / Pascal):
+   - Usa 'verifica_prevalenza_canali' passando i modelli e i Pascal richiesti.
 
-5. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
+5. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
+   - Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
+
+6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
    - Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
 
 REGOLE GLOBALI:
@@ -553,7 +627,7 @@ except Exception:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico, calcola_portata_aria, calcola_consumo_elettrico]
+tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico, calcola_portata_aria, calcola_consumo_elettrico, verifica_prevalenza_canali]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
