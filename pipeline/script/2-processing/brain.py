@@ -506,9 +506,10 @@ def verifica_prevalenza_canali(codici_modelli: str, prevalenza_richiesta_pa: flo
 
 @tool
 def consulta_dizionario_catalogo(parametro_da_cercare: str = "") -> str:
-    """Usa questo tool per capire il significato delle colonne del catalogo Excel, quali parametri sono tracciati (es. gas, rumorosità, trifase) e come interpretarli.
+    """Usa ESCLUSIVAMENTE questo tool per rispondere a domande su COSA c'è nel catalogo, sul SIGNIFICATO delle caratteristiche, o su COME vengono misurati i parametri (es. rumorosità, decibel, tipo di gas, alimentazione, trifase).
+    REGOLA: Se l'utente NON chiede un calcolo matematico, ma chiede spiegazioni discorsive, usa sempre questo tool.
     PARAMETRI:
-    - parametro_da_cercare: (Opzionale) La parola chiave da cercare. Lascia vuoto per leggere tutto."""
+    - parametro_da_cercare: (Opzionale) La parola chiave da cercare (es. 'rumorosità', 'gas'). Lascia vuoto per leggere tutto."""
     print(f"\n[TOOL] Esecuzione CONSULTA_DIZIONARIO -> Ricerca: '{parametro_da_cercare}'")
 
     cartella_corrente = os.path.dirname(os.path.abspath(__file__))
