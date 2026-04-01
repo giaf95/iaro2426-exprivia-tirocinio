@@ -433,12 +433,12 @@ def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) ->
             risultati_finali.append(f"Modello {codice_pulito}: dati di efficienza validi non trovati.")
 
 @tool
-def verifica_prevalenza_canali(codici_modelli: str, prevalenza_richiesta_pa: float = 0.0) -> str:
-    """Usa questo tool per verificare se i modelli hanno abbastanza prevalenza per i canali dell'aria.
+def verifica_prevalenza_canali(codici_modelli: str, pascal_persi_impianto: float = 0.0) -> str:
+    """Usa questo tool per verificare se la ventola del modello ha abbastanza forza (prevalenza) per superare la perdita di carico dei canali dell'utente.
     PARAMETRI:
     - codici_modelli: i codici dei modelli separati da virgola (es. '061-035, 091-051').
-    - prevalenza_richiesta_pa: la perdita di carico in Pascal (Pa) dell'impianto. Se non specificata, lascia 0.0."""
-    print(f"\n[TOOL] Esecuzione VERIFICA_PREVALENZA -> Modelli: {codici_modelli} | Pascal: {prevalenza_richiesta_pa}")
+    - pascal_persi_impianto: estrai il numero associato alle parole 'Pascal', 'Pa' o 'perdita di carico' nel messaggio dell'utente (es. 250.0). Se non specificato, lascia 0.0."""
+    print(f"\n[TOOL] Esecuzione VERIFICA_PREVALENZA -> Modelli: {codici_modelli} | Pascal: {pascal_persi_impianto}")
 
     if df_catalogo is None:
         return "Errore: database catalogo non caricato."
@@ -486,13 +486,13 @@ def verifica_prevalenza_canali(codici_modelli: str, prevalenza_richiesta_pa: flo
             prev_float = 0.0
 
         # confronta i valori
-        if prevalenza_richiesta_pa <= 0:
+        if pascal_persi_impianto <= 0:
             risultati_finali.append(f"Modello {codice_pulito}: ha una prevalenza massima di {prev_float} Pa (richiesta non specificata).")
         else:
-            if prev_float >= prevalenza_richiesta_pa:
-                risultati_finali.append(f"**Modello {codice_pulito}: COMPATIBILE.** Ha {prev_float} Pa, superiore ai {prevalenza_richiesta_pa} Pa richiesti.")
+            if prev_float >= pascal_persi_impianto:
+                risultati_finali.append(f"**Modello {codice_pulito}: COMPATIBILE.** Ha {prev_float} Pa, superiore ai {pascal_persi_impianto} Pa richiesti.")
             else:
-                risultati_finali.append(f"**Modello {codice_pulito}: NON COMPATIBILE.** Ha solo {prev_float} Pa, insufficiente per i {prevalenza_richiesta_pa} Pa richiesti.")
+                risultati_finali.append(f"**Modello {codice_pulito}: NON COMPATIBILE.** Ha solo {prev_float} Pa, insufficiente per i {pascal_persi_impianto} Pa richiesti.")
 
     # unisce i risultati
     testo_ritorno = ""
