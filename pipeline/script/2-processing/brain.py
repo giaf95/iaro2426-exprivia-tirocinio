@@ -310,7 +310,10 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna
     fabbisogno_totale_watt = (carico_base + carico_persone) * moltiplicatore_delta
     fabbisogno_kw = fabbisogno_totale_watt / 1000
 
-    return f"Calcolo completato: {fabbisogno_kw:.2f} kW. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Inserisci come parametro_richiesto ESATTAMENTE 'Potenza frigorifera totale macchina' e inserisci {fabbisogno_kw:.2f} nel campo 'valore_target'."
+    # blocco di sicurezza anti-loop
+    testo_ritorno = testo_ritorno + "\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Il calcolo termico in kW è completato! ORA FERMATI. NON chiamare nessun altro tool. Scrivi immediatamente la risposta finale all'utente riportando i risultati."
+    
+    return testo_ritorno
 
 @tool
 def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str = "") -> str:
@@ -356,7 +359,10 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
     
     print(f"[TOOL] MAX tra Persone ({fabbisogno_persone}) e Volume ({fabbisogno_volumetrico}) = {portata_finale} m3/h")
 
-    return f"Calcolo completato: {portata_finale:.2f} m3/h. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Parametro: 'Portata Massima Mandata Standard'. Target: {portata_finale:.2f}."
+    # blocco di sicurezza anti-loop
+    testo_ritorno = testo_ritorno + "\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Il calcolo della portata d'aria in m3/h è completato! ORA FERMATI. NON chiamare nessun altro tool. Scrivi immediatamente la risposta finale all'utente riportando i risultati."
+    
+    return testo_ritorno
 
 @tool
 def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) -> str:
@@ -427,10 +433,11 @@ def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) ->
             except:
                 pass
 
-        if risultati:
-            risultati_finali.append(f"**Modello {codice_pulito}** (Carico: {kw_attuali} kW):\n" + "\n".join(risultati))
-        else:
-            risultati_finali.append(f"Modello {codice_pulito}: dati di efficienza validi non trovati.")
+        # blocco di sicurezza anti-loop
+    testo_ritorno = "\n\n".join(risultati_finali)
+    testo_ritorno = testo_ritorno + "\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Il calcolo dei consumi elettrici è completato! ORA FERMATI. NON chiamare nessun altro tool. Scrivi immediatamente la risposta finale all'utente."
+    
+    return testo_ritorno
 
 @tool
 def verifica_prevalenza_canali(codici_modelli: str, pascal_persi_impianto: float = 0.0) -> str:
