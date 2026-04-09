@@ -542,6 +542,57 @@ def consulta_dizionario_catalogo(parola_chiave: str = "") -> str:
 
     return f"Ecco il dizionario completo:\n\n{contenuto}\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: ORA FERMATI. NON chiamare più nessun tool. Scrivi la risposta finale all'utente e concludi."
 
+dati_visivi_temporanei = None
+
+@tool
+def prepara_dati_grafico(parametro_asse_y: str, top_n: int = 5) -> str:
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede un GRAFICO, un diagramma o una TABELLA visiva.
+    PARAMETRI:
+    - parametro_asse_y: Inserisci ESATTAMENTE il nome della colonna da analizzare.
+    - top_n: il numero di modelli da mostrare nel grafico."""
+    global dati_visivi_temporanei
+    print(f"\n[TOOL] Esecuzione PREPARA_DATI_GRAFICO -> Asse Y: {parametro_asse_y}")
+
+    if df_catalogo is None:
+        return "Errore: database catalogo non caricato."
+
+    richiesta_esatta = parametro_asse_y.replace('_', ' ').strip().lower()
+    colonna_reale = None
+    
+    for col in colonne_catalogo:
+        if " ".join(col.split()).lower() == " ".join(richiesta_esatta.split()):
+            colonna_reale = col
+            break
+
+    if not colonna_reale:
+        return "Colonna non trovata. Chiedi all'utente di specificare meglio il parametro per il grafico."
+
+    df = df_catalogo.copy()
+    
+    def pulisci_numero(valore):
+        if isinstance(valore, str):
+            return valore.replace('.', '').replace(',', '.')
+        return valore
+        
+    df[colonna_reale] = df[colonna_reale].apply(pulisci_numero)
+    df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
+    
+    risultato = df.dropna(subset=[colonna_reale]).sort_values(by=colonna_reale, ascending=False).head(top_n)
+
+    dati_per_grafico = {
+        "tipo": "grafico_barre",
+        "titolo": colonna_reale,
+        "dati": []
+    }
+
+    for _, row in risultato.iterrows():
+        nome_modello = str(row.get("Modello PAL", "Sconosciuto"))
+        valore = float(row.get(colonna_reale, 0.0))
+        dati_per_grafico["dati"].append({"Modello": nome_modello, "Valore": valore})
+
+    dati_visivi_temporanei = dati_per_grafico
+
+    return "Dati estratti e inviati al frontend. Avvisa l'utente che il grafico è a schermo."
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
@@ -601,6 +652,9 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
                                               
 7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
    - Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
+            
+8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o un'analisi visiva:
+   - Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
@@ -638,9 +692,14 @@ REGOLE GLOBALI:
     #aggiunge alla memoria SOLO la risposta finale, senza il ragionamento dietro
     memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
                     
+    global dati_visivi_temporanei
+    dati_da_esportare = dati_visivi_temporanei
+    dati_visivi_temporanei = None
+                    
     return {
         "testo": risposta_assistente,
-        "azioni": tool_usati
+        "azioni": tool_usati,
+        "dati_visivi": dati_da_esportare
     }
 
 #5 INIZIALIZZAZIONE GLOBALE E SETUP
@@ -677,7 +736,8 @@ tools = [cerca_catalogo_specifico,
          calcola_portata_aria, 
          calcola_consumo_elettrico, 
          verifica_prevalenza_canali,
-         consulta_dizionario_catalogo]
+         consulta_dizionario_catalogo,
+         prepara_dati_grafico]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
