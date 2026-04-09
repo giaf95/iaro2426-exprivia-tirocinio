@@ -775,6 +775,9 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
                                               
 7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
    - Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
+            
+8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o un'analisi visiva:
+   - Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
@@ -824,13 +827,17 @@ REGOLE GLOBALI:
             for tool in msg.tool_calls:
                 if tool['name'] not in tool_usati:
                     tool_usati.append(tool['name'])
-
+    #aggiunge alla memoria SOLO la risposta finale, senza il ragionamento dietro
+    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
+                    
     global dati_visivi_temporanei
     dati_da_esportare = dati_visivi_temporanei
     dati_visivi_temporanei = None
-
+                    
     return {
         "testo": risposta_assistente,
+        "azioni": tool_usati,
+        "dati_visivi": dati_da_esportare
         "azioni": tool_usati,
         "dati_visivi": dati_da_esportare
     }
