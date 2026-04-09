@@ -547,7 +547,7 @@ dati_visivi_temporanei = None
 @tool
 def prepara_dati_grafico(parametro_asse_y: str, top_n: int = 5) -> str:
     """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede un GRAFICO, un diagramma o una TABELLA visiva.
-    PARAMETRI:
+    ARGOMENTI DA PASSARE DIRETTAMENTE:
     - parametro_asse_y: Inserisci ESATTAMENTE il nome della colonna da analizzare.
     - top_n: il numero di modelli da mostrare nel grafico."""
     global dati_visivi_temporanei
@@ -739,7 +739,7 @@ tools = [cerca_catalogo_specifico,
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
-llm = ChatOllama(model="llama3.1:latest", temperature=0, num_thread=4, num_ctx=2048)
+llm = ChatOllama(model="qwen2.5:3b-instruct-q8_0", temperature=0, num_thread=4, num_ctx=2048)
 llm_con_tools = llm.bind_tools(tools)
 
 tool_node = ToolNode(tools)
