@@ -17,6 +17,41 @@ from brain import elabora_richiesta #type: ignore
 
 cartella_pipeline = os.path.abspath(os.path.join(cartella_script, '..'))
 DB_FILE = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'database_chat.db')
+EXCEL_PRESENTAZIONE = os.path.join(cartella_pipeline, 'data', '1-preprocessing', 'catalogo.xlsx')
+cartella_pdf = os.path.join(cartella_pipeline, 'data','0-ingestion')
+cartella_file = os.path.join(cartella_pipeline, 'data','1-preprocessing')
+lista_nera = ["provaRT19_IT01.pdf", "RT19_IT01.pdf"]
+file_disponibili = {}
+ispezzione_file = [cartella_pdf, cartella_file]
+
+for cartella in ispezzione_file:
+    for file in os.listdir(cartella):
+        if file.endswith('.pdf') or file.endswith('.xlsx') or file.endswith('.csv'):
+            if file not in lista_nera:
+                percorso_completo = os.path.join(cartella, file)
+                file_disponibili[file] = percorso_completo
+
+@st.dialog("Scegli un file")
+def scelta(percorso_scelto):
+    if percorso_scelto.endswith('.xlsx'):
+        excel = pd.read_excel(percorso_scelto)
+        st.dataframe(excel, use_container_width=True)
+    elif percorso_scelto.endswith('.csv'):
+        csv = pd.read_csv(percorso_scelto, sep=';')
+        st.dataframe(csv, use_container_width=True)
+    elif percorso_scelto.endswith('.pdf'):
+        documento = fitz.open(percorso_scelto)
+        for numero_pagina in range(len(documento)):
+            pagina = documento.load_page(numero_pagina)
+            pixel = pagina.get_pixmap(matrix = fitz.Matrix(2, 2))
+            immagine = Image.frombytes("RGB", [pixel.width, pixel.height], pixel.samples)
+            st.image(immagine, caption=f"Pagina {numero_pagina + 1}",use_container_width=True)
+
+        
+opzione = st.selectbox("Seleziona un file da vedere", list(file_disponibili.keys()), index=None, placeholder="Scegli un file...")
+if opzione is not None:
+    percorso_completo = file_disponibili[opzione]
+    scelta(percorso_completo)
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -227,10 +262,17 @@ if user_query:
                 if response["azioni"]:
                     st.info(f"Il motore ha consultato i tool: {', '.join(response['azioni'])}")
                 
+                if response.get("dati_visivi") and response["dati_visivi"]["tipo"] == "grafico_barre":
+                    dati = response["dati_visivi"]
+                    df_grafico = pd.DataFrame(dati["dati"])
+                    figura = px.bar(df_grafico, x="Modello", y="Valore", title=dati["titolo"])
+                    st.plotly_chart(figura, use_container_width=True)
+                
                 cronologia_corrente.append({
                     "role": "assistant", 
                     "content": response["testo"],
-                    "azioni": response["azioni"]
+                    "azioni": response["azioni"],
+                    "dati_visivi": response.get("dati_visivi")
                 })
                 salva_memoria_utente(st.session_state.user_id, chat_attiva, cronologia_corrente)
                 
