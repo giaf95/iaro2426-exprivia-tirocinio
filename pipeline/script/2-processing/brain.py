@@ -592,7 +592,7 @@ def prepara_dati_grafico(parametro_asse_y: str, top_n: int = 5) -> str:
 
     dati_visivi_temporanei = dati_per_grafico
 
-    return "Dati estratti e inviati al frontend. Avvisa l'utente che il grafico è a schermo."
+    return "Dati estratti e inviati al frontend. Avvisa l'utente che il grafico è a schermo.\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Hai estratto i dati! ORA FERMATI. NON chiamare più nessun tool. Scrivi immediatamente la risposta finale all'utente confermando che il grafico è visibile."
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
@@ -739,7 +739,7 @@ tools = [cerca_catalogo_specifico,
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
-llm = ChatOllama(model="qwen2.5:3b-instruct-q8_0", temperature=0, num_thread=4, num_ctx=2048)
+llm = ChatOllama(model="gemma3n:e4b", temperature=0, num_thread=4, num_ctx=2048)
 llm_con_tools = llm.bind_tools(tools)
 
 tool_node = ToolNode(tools)
