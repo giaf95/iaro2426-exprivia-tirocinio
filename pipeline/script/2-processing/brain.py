@@ -754,7 +754,7 @@ tools = [cerca_catalogo_specifico,
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
-llm = ChatOllama(model="gemma3:4b", temperature=0, num_thread=4, num_ctx=1536)
+llm = ChatOllama(model="qwen2.5:7b-instruct-q4_K_M", temperature=0, num_thread=4, num_ctx=1536)
 llm_con_tools = llm.bind_tools(tools)
 
 tool_node = ToolNode(tools)
