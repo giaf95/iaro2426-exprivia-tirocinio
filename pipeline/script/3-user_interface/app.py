@@ -362,11 +362,16 @@ if user_query:
                     #         st.markdown(f"**Tabella: {dati['titolo']}**")
                     #         st.dataframe(df_visivo, use_container_width=True, hide_index=True)
                 
-                if response.get("dati_visivi") and response["dati_visivi"]["tipo"] == "grafico_barre":
+                if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
-                    df_grafico = pd.DataFrame(dati["dati"])
-                    figura = px.bar(df_grafico, x="Modello", y="Valore", title=dati["titolo"])
-                    st.plotly_chart(figura, use_container_width=True)
+                    df_visivo = pd.DataFrame(dati["dati"])
+                    
+                    if dati["tipo"] == "grafico_barre":
+                        figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
+                        st.plotly_chart(figura, use_container_width=True)
+                    elif dati["tipo"] == "tabella":
+                        st.markdown(f"**Tabella: {dati['titolo']}**")
+                        st.dataframe(df_visivo, use_container_width=True, hide_index=True)
                 
                 cronologia_corrente.append({
                     "role": "assistant", 
