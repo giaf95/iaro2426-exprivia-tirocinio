@@ -70,9 +70,9 @@ def load_embeddings():
     return embeddings
 
 # crea il vector store e lo salva in disco
-def create_vectorstore(documents, embeddings, persist_dir="pipeline/data/2-processing/chroma_db_catalogo"):
+def create_vectorstore(documents, embeddings, persist_dir):
     print(f"embedding {len(documents)} documenti...")
-    Path(persist_dir).mkdir(exist_ok=True)
+    Path(persist_dir).mkdir(parents=True, exist_ok=True)
     
     vectorstore = Chroma.from_documents(
         documents=documents,
@@ -100,9 +100,16 @@ def test_search(vectorstore, query, k=2):
 if __name__ == "__main__":
     print("ingestion pipeline hvac\n")
     
+    cartella_corrente = os.path.dirname(os.path.abspath(__file__))
+
+    excel_path = os.path.join(cartella_corrente, "..", "..", "data", "1-preprocessing", "catalogo.xlsx")
+
+    persist_dir = os.path.join(cartella_corrente, "..", "..", "data", "2-processing", "chroma_db_catalogo")
+
+    metadata_path = os.path.join(cartella_corrente, "..", "..", "data", "1-preprocessing", "metadata_catalogo.json")
+
     try:
         print("caricamento excel...")
-        excel_path = r"C:/Users/PC_A87/Desktop/Carricamento Progetti GIT/pipeline/data/1-preprocessing/catalogo.xlsx"
         if not os.path.exists(excel_path):
             raise FileNotFoundError(f"file non trovato: {excel_path}")
         
@@ -124,7 +131,7 @@ if __name__ == "__main__":
         embeddings = load_embeddings()
         
         print("\ncreazione vector store...")
-        vectorstore = create_vectorstore(documents, embeddings)
+        vectorstore = create_vectorstore(documents, embeddings, persist_dir=persist_dir)
         
         print("\ningestion completata\n")
         print("test retrieval:")
@@ -139,9 +146,9 @@ if __name__ == "__main__":
             "embedding_model": "all-MiniLM-L6-v2",
             "vector_store": "Chroma"
         }
-        with open("metadata_catalogo.json", "w") as f:
+        with open(metadata_path, "w") as f:
             json.dump(metadata, f, indent=2)
-        print("\nok: metadata salvato")
+        print(f"\nok: metadata salvato in {metadata_path}")
         
     except Exception as e:
         print(f"errore: {e}")
