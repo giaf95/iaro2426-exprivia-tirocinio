@@ -231,45 +231,17 @@ for msg in cronologia_corrente:
         st.write(msg["content"])
         if "azioni" in msg and msg["azioni"]:
          st.caption(f" Azioni compiute: {', '.join(msg['azioni'])}")
-
-#------------------- TEST ----------------------------------------------
-#storico_chat_finto = [
-   # {
-        #"ruolo": "user",
-        #"tipo_messaggio": "testo",
-        #"contenuto": "Mostrami i dati estratti dal catalogo."
-    #},
-    #{
-       # "ruolo": "assistant",
-        #"tipo_messaggio": "tabella_excel",
-        #"contenuto":EXCEL_PRESENTAZIONE
-   # },
-    #{
-        #"ruolo": "user",
-        #"tipo_messaggio": "testo",
-        #"contenuto": "Fantastico! E puoi farmi anche un grafico a barre di questi dati, magari mostrando la distribuzione dei prodotti per categoria?"
-    #},
-    #{
-        #"ruolo": "assistant",
-        #"tipo_messaggio": "grafico_excel",
-        #"contenuto": EXCEL_PRESENTAZIONE
-    #}
-#]
-
-#for messaggio in storico_chat_finto:
-    #with st.chat_message(messaggio["ruolo"]): 
-        #if messaggio["tipo_messaggio"] == "testo":
-            #st.markdown(messaggio["contenuto"])  
-        #elif messaggio["tipo_messaggio"] == "tabella_excel":
-            #df = pd.read_excel(messaggio["contenuto"])
-            #st.dataframe(df, use_container_width=True) 
-        #elif messaggio["tipo_messaggio"] == "grafico_excel":
-           # df = pd.read_excel(messaggio["contenuto"])
-            #figura = px.bar(df, x="Modello PAL", y="Portata Massima Mandata Standard", title="Analisi Portata per Modello")
-            #st.plotly_chart(figura, use_container_width=True)
-        #else:
-            #st.markdown("Tipo di messaggio non riconosciuto.")
-#-----------------------------------------------------------------------
+        if "dati_visivi" in msg:
+            dati = msg["dati_visivi"]
+            tipo = msg.get("formato_visivo")
+            if tipo == "tabella":
+                st.dataframe(dati, use_container_width=True) 
+            elif tipo == "grafico":
+                pacchetto = msg["dati_visivi"]
+                dati = pacchetto["dati"]
+                titolo = pacchetto["titolo"]
+                figura = px.bar(dati, x="Modello", y= "Valore",title= f"{titolo}")
+                st.plotly_chart(figura, use_container_width=True)
 
 user_query = st.chat_input("Fai una domanda tecnica sui prodotti o servizi Zoppellaro...")
 
