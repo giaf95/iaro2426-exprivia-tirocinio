@@ -547,13 +547,14 @@ def consulta_dizionario_catalogo(parola_chiave: str = "") -> str:
 dati_visivi_temporanei = None
 
 @tool
-def prepara_dati_grafico(parametro_asse_y: str, top_n: int = 5) -> str:
+def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "grafico", top_n: int = 5) -> str:
     """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede un GRAFICO, un diagramma o una TABELLA visiva.
     PARAMETRI:
     - parametro_asse_y: Inserisci ESATTAMENTE il nome della colonna da analizzare.
-    - top_n: il numero di modelli da mostrare nel grafico."""
+    - tipo_visualizzazione: Scrivi "grafico" se l'utente chiede un grafico/diagramma. Scrivi "tabella" se chiede una tabella.
+    - top_n: il numero di modelli da mostrare nel grafico/tabella."""
     global dati_visivi_temporanei
-    print(f"\n[TOOL] Esecuzione PREPARA_DATI_GRAFICO -> Asse Y: {parametro_asse_y}")
+    print(f"\n[TOOL] Esecuzione PREPARA_DATI_GRAFICO -> Asse Y: {parametro_asse_y} | Tipo: {tipo_visualizzazione}")
 
     if df_catalogo is None:
         return "Errore: database catalogo non caricato."
@@ -581,8 +582,11 @@ def prepara_dati_grafico(parametro_asse_y: str, top_n: int = 5) -> str:
     
     risultato = df.dropna(subset=[colonna_reale]).sort_values(by=colonna_reale, ascending=False).head(top_n)
 
+    # L'interruttore che decide cosa passeremo al frontend
+    tipo_scelto = "tabella" if tipo_visualizzazione == "tabella" else "grafico_barre"
+
     dati_per_grafico = {
-        "tipo": "grafico_barre",
+        "tipo": tipo_scelto,
         "titolo": colonna_reale,
         "dati": []
     }
@@ -594,8 +598,7 @@ def prepara_dati_grafico(parametro_asse_y: str, top_n: int = 5) -> str:
 
     dati_visivi_temporanei = dati_per_grafico
 
-    return "Dati estratti e inviati al frontend. Avvisa l'utente che il grafico è a schermo."
-
+    return "Dati estratti e inviati al frontend. Avvisa l'utente che i dati visivi sono a schermo.\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Hai estratto i dati! ORA FERMATI. NON chiamare più nessun tool. Scrivi immediatamente la risposta finale all'utente confermando che l'analisi è visibile."
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
 def call_model(state: AgentState):

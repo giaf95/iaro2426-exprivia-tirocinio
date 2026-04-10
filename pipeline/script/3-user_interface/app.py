@@ -234,7 +234,16 @@ for msg in cronologia_corrente:
             st.caption(f" Azioni compiute: {', '.join(msg['azioni'])}")
         
         if msg.get("dati_visivi"):
+        if msg.get("dati_visivi"):
             dati = msg["dati_visivi"]
+            df_visivo = pd.DataFrame(dati["dati"])
+            
+            if dati["tipo"] == "grafico_barre":
+                figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
+                st.plotly_chart(figura, use_container_width=True)
+            elif dati["tipo"] == "tabella":
+                st.markdown(f"**Tabella: {dati['titolo']}**")
+                st.dataframe(df_visivo, use_container_width=True, hide_index=True)
             
             # 1. Nuovi grafici salvati su file HTML
             if dati.get("tipo") == "grafico_html_file":
@@ -324,8 +333,20 @@ if user_query:
                 response = elabora_richiesta(user_query, chat_id=id_chat_corrente)
                 
                 st.write(response["testo"])
+                if response["azioni"]:
+                    st.info(f"Il motore ha consultato i tool: {', '.join(response['azioni'])}")
+                
+                if response.get("dati_visivi"):
                 if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
+                    df_visivo = pd.DataFrame(dati["dati"])
+                    
+                    if dati["tipo"] == "grafico_barre":
+                        figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
+                        st.plotly_chart(figura, use_container_width=True)
+                    elif dati["tipo"] == "tabella":
+                        st.markdown(f"**Tabella: {dati['titolo']}**")
+                        st.dataframe(df_visivo, use_container_width=True, hide_index=True)
                     
                     # Lettura da file HTML
                     if dati.get("tipo") == "grafico_html_file":
