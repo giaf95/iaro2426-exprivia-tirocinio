@@ -11,7 +11,7 @@ from langgraph.graph import StateGraph, END
 from langchain_ollama import ChatOllama
 from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 import plotly.express as px
@@ -750,34 +750,34 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
         istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico HVAC. Devi rispettare RIGOROSAMENTE questo albero decisionale (IF/THEN):
 
 1. IF l'utente chiede un modello per CONDIZIONARE, RAFFRESCARE o RISCALDARE un ambiente:
-   - Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Temp. Esterna, 4. Temp. Interna.
-   - SE l'utente fa un follow-up (es. "e se fosse 300 mq?"), recupera i dati invariati dalla cronologia.
-   - SE CONTINUA A MANCARE UN DATO: Fermati e chiedilo.
-   - SE HAI TUTTI I DATI: Usa 'calcola_fabbisogno_termico' e poi 'cerca_catalogo_generico'.
+- Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Temp. Esterna, 4. Temp. Interna.
+- SE l'utente fa un follow-up, recupera i dati invariati dalla cronologia.
+- SE CONTINUA A MANCARE UN DATO: Fermati e chiedilo.
+- SE HAI TUTTI I DATI: Usa 'calcola_fabbisogno_termico' e poi 'cerca_catalogo_generico'.
 
 2. IF l'utente chiede un modello per VENTILARE o garantire il RICAMBIO D'ARIA:
-   - Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Tipo di locale.
-   - SE l'utente sta aggiornando i numeri, recupera i dati invariati dalla chat.
-   - SE MANCA UN DATO: Fermati e chiedilo.
-   - SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli.
+- Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Tipo di locale.
+- SE l'utente sta aggiornando i numeri, recupera i dati invariati dalla chat.
+- SE MANCA UN DATO: Fermati e chiedilo.
+- SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli.
 
 3. IF l'utente chiede il CONSUMO ELETTRICO o quale modello CONVIENE/CONSUMA MENO:
-   - Usa 'calcola_consumo_elettrico'. NON cercare l'efficienza prima, il tool la troverà da solo.
+- Usa 'calcola_consumo_elettrico'. NON cercare l'efficienza prima, il tool la troverà da solo.
 
 4. IF l'utente chiede la PREVALENZA o la COMPATIBILITÀ CON I CANALI (perdita di carico / Pascal):
-   - Usa 'verifica_prevalenza_canali' passando i modelli e i Pascal richiesti.
+- Usa 'verifica_prevalenza_canali' passando i modelli e i Pascal richiesti.
 
 5. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
-   - Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
+- Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
 
 6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
-   - Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
-                                              
+- Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
+
 7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
-   - Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
-            
+- Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
+
 8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o un'analisi visiva:
-   - Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
+- Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
@@ -786,10 +786,8 @@ REGOLE GLOBALI:
 - DIVIETO DI JSON: È severamente vietato rispondere mostrando codice JSON grezzo all'utente.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
 
-    memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
 
-    match_modello_specifico = re.search(r"\b\d{3}-\d{3}\b", user_query)
-    richiesta_visiva = any(parola in user_query.lower() for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
+    memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
 
     messaggi_completi = memoria_conversazioni[chat_id]
     messaggi_per_llm = [messaggi_completi[0]]
@@ -804,7 +802,7 @@ REGOLE GLOBALI:
     try:
         # attiva il cronometro prima che l'llm inizi a pensare
         start_time = time.time()
-        result = app.invoke(current_state, {"recursion_limit": 10})
+        result = app.invoke(current_state, {"recursion_limit": 3})
         end_time = time.time()
         tempo_trascorso = end_time - start_time
         print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
@@ -821,7 +819,19 @@ REGOLE GLOBALI:
 
     memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
 
+
+    nuovi_messaggi = result["messages"]
+
+    risposta_assistente = ""
+    for msg in reversed(nuovi_messaggi):
+        if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
+            risposta_assistente = msg.content
+            break
+
+    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
+
     tool_usati = []
+    for msg in nuovi_messaggi:
     for msg in nuovi_messaggi:
         if hasattr(msg, 'tool_calls') and msg.tool_calls:
             for tool in msg.tool_calls:
@@ -833,7 +843,7 @@ REGOLE GLOBALI:
     global dati_visivi_temporanei
     dati_da_esportare = dati_visivi_temporanei
     dati_visivi_temporanei = None
-                    
+
     return {
         "testo": risposta_assistente,
         "azioni": tool_usati,
@@ -841,6 +851,7 @@ REGOLE GLOBALI:
         "azioni": tool_usati,
         "dati_visivi": dati_da_esportare
     }
+
 
 
 #5 INIZIALIZZAZIONE GLOBALE E SETUP
@@ -891,7 +902,7 @@ def route_after_tool(state: AgentState) -> str:
 
 workflow.set_entry_point("agent")
 workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
-workflow.add_conditional_edges("tools", route_after_tool, {"agent": "agent", "end": END})
+workflow.add_edge("tools", END)
 
 app = workflow.compile()
 
