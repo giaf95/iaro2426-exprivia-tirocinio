@@ -11,7 +11,7 @@ from langgraph.graph import StateGraph, END
 from langchain_ollama import ChatOllama
 from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 import plotly.express as px
@@ -625,38 +625,39 @@ memoria_conversazioni = {}
 def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
     global memoria_conversazioni
 
+
     if chat_id not in memoria_conversazioni:
         istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico HVAC. Devi rispettare RIGOROSAMENTE questo albero decisionale (IF/THEN):
 
 1. IF l'utente chiede un modello per CONDIZIONARE, RAFFRESCARE o RISCALDARE un ambiente:
-   - Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Temp. Esterna, 4. Temp. Interna.
-   - SE l'utente fa un follow-up (es. "e se fosse 300 mq?"), recupera i dati invariati dalla cronologia.
-   - SE CONTINUA A MANCARE UN DATO: Fermati e chiedilo.
-   - SE HAI TUTTI I DATI: Usa 'calcola_fabbisogno_termico' e poi 'cerca_catalogo_generico'.
+- Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Temp. Esterna, 4. Temp. Interna.
+- SE l'utente fa un follow-up, recupera i dati invariati dalla cronologia.
+- SE CONTINUA A MANCARE UN DATO: Fermati e chiedilo.
+- SE HAI TUTTI I DATI: Usa 'calcola_fabbisogno_termico' e poi 'cerca_catalogo_generico'.
 
 2. IF l'utente chiede un modello per VENTILARE o garantire il RICAMBIO D'ARIA:
-   - Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Tipo di locale.
-   - SE l'utente sta aggiornando i numeri, recupera i dati invariati dalla chat.
-   - SE MANCA UN DATO: Fermati e chiedilo.
-   - SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli.
+- Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Tipo di locale.
+- SE l'utente sta aggiornando i numeri, recupera i dati invariati dalla chat.
+- SE MANCA UN DATO: Fermati e chiedilo.
+- SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli.
 
 3. IF l'utente chiede il CONSUMO ELETTRICO o quale modello CONVIENE/CONSUMA MENO:
-   - Usa 'calcola_consumo_elettrico'. NON cercare l'efficienza prima, il tool la troverà da solo.
+- Usa 'calcola_consumo_elettrico'. NON cercare l'efficienza prima, il tool la troverà da solo.
 
 4. IF l'utente chiede la PREVALENZA o la COMPATIBILITÀ CON I CANALI (perdita di carico / Pascal):
-   - Usa 'verifica_prevalenza_canali' passando i modelli e i Pascal richiesti.
+- Usa 'verifica_prevalenza_canali' passando i modelli e i Pascal richiesti.
 
 5. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
-   - Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
+- Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
 
 6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
-   - Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
-                                              
+- Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
+
 7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
-   - Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
-            
+- Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
+
 8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o un'analisi visiva:
-   - Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
+- Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
@@ -666,41 +667,56 @@ REGOLE GLOBALI:
 - DIVIETO CHIAMATE MULTIPLE: Ti è ASSOLUTAMENTE VIETATO chiamare due tool contemporaneamente. Scegli UN SOLO tool alla volta, attendi il risultato, e poi rispondi all'utente.
 - REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da QUALSIASI tool, ti è ASSOLUTAMENTE VIETATO richiamare lo stesso tool o chiamarne altri. Devi IMMEDIATAMENTE formulare la risposta discorsiva per l'utente e fermarti.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
-        
+
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
-    
-    current_state = {"messages": memoria_conversazioni[chat_id]}
-    
+
+    messaggi_completi = memoria_conversazioni[chat_id]
+    messaggi_per_llm = [messaggi_completi[0]]
+
+    if len(messaggi_completi) > 7:
+        messaggi_per_llm.extend(messaggi_completi[-6:])
+    else:
+        messaggi_per_llm.extend(messaggi_completi[1:])
+
+    current_state = {"messages": messaggi_per_llm}
+
     try:
         # attiva il cronometro prima che l'llm inizi a pensare
         start_time = time.time()
-        result = app.invoke(current_state, {"recursion_limit": 10})
+        result = app.invoke(current_state, {"recursion_limit": 3})
         end_time = time.time()
         tempo_trascorso = end_time - start_time
         print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
     except Exception as e:
         return {"testo": f"Si è verificato un errore nel motore: {e}", "azioni": []}
-        
-    memoria_conversazioni[chat_id] = result['messages']
-    risposta_assistente = result['messages'][-1].content
-    
-    # estrae i nomi dei tool usati per mostrarli nell'interfaccia grafica
+
+    nuovi_messaggi = result["messages"]
+
+    risposta_assistente = ""
+    for msg in reversed(nuovi_messaggi):
+        if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
+            risposta_assistente = msg.content
+            break
+
+    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
+
     tool_usati = []
-    for msg in result['messages']:
+    for msg in nuovi_messaggi:
         if hasattr(msg, 'tool_calls') and msg.tool_calls:
             for tool in msg.tool_calls:
                 if tool['name'] not in tool_usati:
                     tool_usati.append(tool['name'])
-                    
+
     global dati_visivi_temporanei
     dati_da_esportare = dati_visivi_temporanei
     dati_visivi_temporanei = None
-                    
+
     return {
         "testo": risposta_assistente,
         "azioni": tool_usati,
         "dati_visivi": dati_da_esportare
     }
+
 
 #5 INIZIALIZZAZIONE GLOBALE E SETUP
 
@@ -741,8 +757,8 @@ tools = [cerca_catalogo_specifico,
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
-llm = ChatOllama(model="qwen2.5:3b-instruct-q8_0", temperature=0, num_thread=4, num_ctx=2048)
-llm_con_tools = llm.bind_tools(tools, parallel_tool_calls=False)
+llm = ChatOllama(model="gemma3:4b", temperature=0, num_thread=4, num_ctx=1536)
+llm_con_tools = llm.bind_tools(tools)
 
 tool_node = ToolNode(tools)
 
@@ -758,6 +774,6 @@ def route_after_tool(state: AgentState) -> str:
 
 workflow.set_entry_point("agent")
 workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
-workflow.add_conditional_edges("tools", route_after_tool, {"agent": "agent", "end": END})
+workflow.add_edge("tools", END)
 
 app = workflow.compile()
