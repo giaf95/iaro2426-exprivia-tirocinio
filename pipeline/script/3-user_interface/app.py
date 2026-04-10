@@ -232,11 +232,16 @@ for msg in cronologia_corrente:
         if "azioni" in msg and msg["azioni"]:
             st.caption(f" Azioni compiute: {', '.join(msg['azioni'])}")
         
-        if msg.get("dati_visivi") and msg["dati_visivi"]["tipo"] == "grafico_barre":
+        if msg.get("dati_visivi"):
             dati = msg["dati_visivi"]
-            df_grafico = pd.DataFrame(dati["dati"])
-            figura = px.bar(df_grafico, x="Modello", y="Valore", title=dati["titolo"])
-            st.plotly_chart(figura, use_container_width=True)
+            df_visivo = pd.DataFrame(dati["dati"])
+            
+            if dati["tipo"] == "grafico_barre":
+                figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
+                st.plotly_chart(figura, use_container_width=True)
+            elif dati["tipo"] == "tabella":
+                st.markdown(f"**Tabella: {dati['titolo']}**")
+                st.dataframe(df_visivo, use_container_width=True, hide_index=True)
 
 #------------------- TEST ----------------------------------------------
 #storico_chat_finto = [
@@ -296,11 +301,16 @@ if user_query:
                 if response["azioni"]:
                     st.info(f"Il motore ha consultato i tool: {', '.join(response['azioni'])}")
                 
-                if response.get("dati_visivi") and response["dati_visivi"]["tipo"] == "grafico_barre":
+                if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
-                    df_grafico = pd.DataFrame(dati["dati"])
-                    figura = px.bar(df_grafico, x="Modello", y="Valore", title=dati["titolo"])
-                    st.plotly_chart(figura, use_container_width=True)
+                    df_visivo = pd.DataFrame(dati["dati"])
+                    
+                    if dati["tipo"] == "grafico_barre":
+                        figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
+                        st.plotly_chart(figura, use_container_width=True)
+                    elif dati["tipo"] == "tabella":
+                        st.markdown(f"**Tabella: {dati['titolo']}**")
+                        st.dataframe(df_visivo, use_container_width=True, hide_index=True)
                 
                 cronologia_corrente.append({
                     "role": "assistant", 
