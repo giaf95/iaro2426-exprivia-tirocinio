@@ -231,16 +231,16 @@ for msg in cronologia_corrente:
         st.write(msg["content"])
         if "azioni" in msg and msg["azioni"]:
          st.caption(f" Azioni compiute: {', '.join(msg['azioni'])}")
-        if "dati_visivi" in msg:
+        if msg.get("dati_visivi"):
             dati = msg["dati_visivi"]
-            tipo = msg.get("formato_visivo")
+            tipo = dati.get("tipo")
+            df_visivo = pd.DataFrame(dati["dati"])
             if tipo == "tabella":
-                st.dataframe(dati, use_container_width=True) 
-            elif tipo == "grafico":
-                pacchetto = msg["dati_visivi"]
-                dati = pacchetto["dati"]
-                titolo = pacchetto["titolo"]
-                figura = px.bar(dati, x="Modello", y= "Valore",title= f"{titolo}")
+                st.markdown(f"**Tabella: {dati['titolo']}**")
+                st.dataframe(df_visivo, use_container_width=True, hide_index=True) 
+            elif tipo == "grafico_barre":
+                titolo = dati["titolo"]
+                figura = px.bar(df_visivo, x="Modello", y= "Valore",title= f"{titolo}")
                 st.plotly_chart(figura, use_container_width=True)
 
 user_query = st.chat_input("Fai una domanda tecnica sui prodotti o servizi Zoppellaro...")
