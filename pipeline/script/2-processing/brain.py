@@ -104,14 +104,14 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
 
 @tool
 def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decrescente", top_n: int = 3, valore_target: float = None) -> str:
-    """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sui modelli a catalogo.
-    DIVIETO ASSOLUTO: NON usare questo tool se l'utente fa domande su garanzie, assistenza, policy o nomina il sito web. In quei casi fermati e usa 'cerca_sito_web'.
-    REGOLA FONDAMENTALE: Usa SOLO i parametri richiesti.
+    """Usa questo tool per cercare e filtrare i modelli a catalogo tramite dati tecnici.
+    DIVIETO ASSOLUTO: NON usare questo tool per il sito web o per le garanzie.
+    Se l'utente chiede più condizioni (es. potenza e gas insieme), usa il parametro numerico principale (es. la potenza) per 'parametro_richiesto'.
     ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - parametro_richiesto: Inserisci ESATTAMENTE il nome della colonna.
-    - ordinamento: 'crescente' o 'decrescente'.
-    - top_n: il numero di modelli da restituire.
-    - valore_target: (OPZIONALE) Se l'utente o il Calcolatore ti chiedono un modello per coprire un certo fabbisogno in kW, inserisci qui il numero. Il tool filtrerà i modelli adatti."""
+    - parametro_richiesto: Inserisci ESATTAMENTE il nome della colonna principale da filtrare.
+    - ordinamento: 'crescente' o 'decrescente' (SE NON SAI COSA METTERE, scrivi sempre 'decrescente').
+    - top_n: numero di modelli (SE L'UTENTE NON LO SPECIFICA, scrivi sempre 5).
+    - valore_target: (OPZIONALE) Il numero target da cercare (es. 50)."""
     print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
     print(f"[TOOL] Estrazione -> Parametro: '{parametro_richiesto}', Ordine: '{ordinamento}', Top: {top_n}")
 
@@ -244,9 +244,8 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
 
 @tool
 def cerca_sito_web(query: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE per cercare informazioni sul SITO WEB dell'azienda.
-    ATTIVALO SEMPRE quando l'utente nomina parole come: 'sito web', 'assistenza', 'post-vendita', 'garanzia', 'policy' o servizi aziendali in generale.
-    NON usarlo per cercare dati tecnici dei prodotti."""
+    """Usa questo tool ESCLUSIVAMENTE per cercare informazioni testuali sul SITO WEB aziendale (es. assistenza, garanzia, policy, servizi).
+    DIVIETO ASSOLUTO: NON usare MAI questo tool se l'utente nomina le parole 'catalogo', 'kW', 'potenza', 'gas', o cerca specifiche 'macchine' e 'modelli'. Per quelle richieste sei OBBLIGATO a usare i tool del catalogo, anche se la domanda ti sembra complessa."""
     print(f"[TOOL] Query in ingresso: '{query}'")
     
     if not db_web:
