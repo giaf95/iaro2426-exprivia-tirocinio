@@ -500,11 +500,8 @@ def verifica_prevalenza_canali(codici_modelli: str, prevalenza_richiesta_pa: flo
     testo_ritorno = ""
     for r in risultati_finali:
         testo_ritorno = testo_ritorno + r + "\n\n"
-
-    # blocco di sicurezza per evitare loop
-    testo_ritorno = testo_ritorno + "=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Il calcolo della prevalenza è completato! ORA FERMATI. NON chiamare nessun altro tool (vietato usare il dizionario o altri calcoli). Scrivi immediatamente la risposta finale all'utente dicendo chiaramente se il modello è COMPATIBILE o NON COMPATIBILE."
     
-    return testo_ritorno
+    return testo_ritorno.strip()
 
 @tool
 def consulta_dizionario_catalogo(parola_chiave: str = "") -> str:
@@ -538,11 +535,11 @@ def consulta_dizionario_catalogo(parola_chiave: str = "") -> str:
             for r in risultati:
                 testo_ritorno = testo_ritorno + r + "\n\n"
             
-            return testo_ritorno + "=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Hai trovato i dati! ORA FERMATI. NON chiamare più nessun tool. Scrivi immediatamente la risposta finale all'utente usando SOLO questi dati."
+            return testo_ritorno.strip()
         else:
-            return f"Nessuna voce trovata per '{parola_chiave}'. Ecco il dizionario:\n\n{contenuto}\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: ORA FERMATI. NON chiamare più nessun tool. Scrivi la risposta finale all'utente e concludi."
+            return f"Nessuna voce trovata per '{parola_chiave}'. Ecco il dizionario:\n\n{contenuto}"
 
-    return f"Ecco il dizionario completo:\n\n{contenuto}\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: ORA FERMATI. NON chiamare più nessun tool. Scrivi la risposta finale all'utente e concludi."
+    return f"Ecco il dizionario completo:\n\n{contenuto}"
 
 dati_visivi_temporanei = None
 
