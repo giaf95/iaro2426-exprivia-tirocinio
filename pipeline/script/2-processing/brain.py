@@ -102,13 +102,14 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
 
 @tool
 def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decrescente", top_n: int = 3, valore_target: float = None) -> str:
-    """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo.
+    """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sui modelli a catalogo.
+    DIVIETO ASSOLUTO: NON usare questo tool se l'utente fa domande su garanzie, assistenza, policy o nomina il sito web. In quei casi fermati e usa 'cerca_sito_web'.
     REGOLA FONDAMENTALE: Usa SOLO i parametri richiesti.
-    PARAMETRI:
-    - 'parametro_richiesto': Inserisci ESATTAMENTE il nome della colonna.
-    - 'ordinamento': 'crescente' o 'decrescente'.
-    - 'top_n': il numero di modelli da restituire.
-    - 'valore_target': (OPZIONALE) Se l'utente o il Calcolatore ti chiedono un modello per coprire un certo fabbisogno in kW, inserisci qui il numero. Il tool filtrerà i modelli adatti."""
+    ARGOMENTI DA PASSARE DIRETTAMENTE:
+    - parametro_richiesto: Inserisci ESATTAMENTE il nome della colonna.
+    - ordinamento: 'crescente' o 'decrescente'.
+    - top_n: il numero di modelli da restituire.
+    - valore_target: (OPZIONALE) Se l'utente o il Calcolatore ti chiedono un modello per coprire un certo fabbisogno in kW, inserisci qui il numero. Il tool filtrerà i modelli adatti."""
     print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
     print(f"[TOOL] Estrazione -> Parametro: '{parametro_richiesto}', Ordine: '{ordinamento}', Top: {top_n}")
 
@@ -241,8 +242,9 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
 
 @tool
 def cerca_sito_web(query: str) -> str:
-    """Usa questo tool per cercare procedure passo-passo, guide all'installazione, troubleshooting e codici di errore.
-    REGOLA FERREA: Usa un UNICO parametro stringa chiamato 'query' contenente le parole chiave."""
+    """Usa questo tool ESCLUSIVAMENTE per cercare informazioni sul SITO WEB dell'azienda.
+    ATTIVALO SEMPRE quando l'utente nomina parole come: 'sito web', 'assistenza', 'post-vendita', 'garanzia', 'policy' o servizi aziendali in generale.
+    NON usarlo per cercare dati tecnici dei prodotti."""
     print(f"[TOOL] Query in ingresso: '{query}'")
     
     if not db_web:
@@ -656,6 +658,8 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o una TABELLA:
            - Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
            - Se l'utente NON chiede esplicitamente grafici o tabelle, NON usare 'prepara_dati_grafico' e usa le normali funzioni di ricerca.
+                                              
+9. SITO WEB vs CATALOGO: Se l'utente chiede informazioni su garanzie, assistenza post-vendita, policy o nomina il sito web, usa ESCLUSIVAMENTE il tool 'cerca_sito_web'. È severamente vietato usare i tool del catalogo per queste richieste.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
