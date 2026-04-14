@@ -595,7 +595,7 @@ def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "gra
 
     dati_visivi_temporanei = dati_per_grafico
 
-    return "Dati estratti e inviati al frontend. Avvisa l'utente che i dati visivi sono a schermo.\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Hai estratto i dati! ORA FERMATI. NON chiamare più nessun tool. Scrivi immediatamente la risposta finale all'utente confermando che l'analisi è visibile."
+    return "Analisi visiva pronta."
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
 def call_model(state: AgentState):
@@ -648,7 +648,8 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Usa 'verifica_prevalenza_canali' passando i modelli e i Pascal richiesti.
 
 5. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
-- Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
+- Se nella richiesta è presente un codice modello esatto nel formato 000-000, usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
+- In questo caso NON usare 'prepara_dati_grafico' a meno che l'utente chieda esplicitamente un grafico, un diagramma o una tabella visiva.
 
 6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
 - Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
@@ -657,7 +658,9 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
 
 8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o un'analisi visiva:
-- Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
+- Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico' solo se la richiesta è esplicitamente visiva.
+- NON generare tabelle in Markdown.
+- Se l'utente chiede solo il valore di un parametro di un modello specifico, NON usare questo tool.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
@@ -669,6 +672,31 @@ REGOLE GLOBALI:
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
+
+    match_modello_specifico = re.search(r"\b\d{3}-\d{3}\b", user_query)
+    richiesta_visiva = any(parola in user_query.lower() for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
+
+    if match_modello_specifico and not richiesta_visiva:
+        codice_modello = match_modello_specifico.group(0)
+        parametro_richiesto = user_query
+        parametro_richiesto = re.sub(r"\bqual[’']?è\b", "", parametro_richiesto, flags=re.IGNORECASE)
+        parametro_richiesto = re.sub(r"\bdel modello\b", "", parametro_richiesto, flags=re.IGNORECASE)
+        parametro_richiesto = re.sub(r"\bmodello\b", "", parametro_richiesto, flags=re.IGNORECASE)
+        parametro_richiesto = parametro_richiesto.replace(codice_modello, "")
+        parametro_richiesto = parametro_richiesto.replace("?", "").strip()
+
+        risposta_assistente = cerca_catalogo_specifico.invoke({
+            "codice_modello": codice_modello,
+            "parametro_richiesto": parametro_richiesto
+        })
+
+        memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
+
+        return {
+            "testo": risposta_assistente,
+            "azioni": ["cerca_catalogo_specifico"],
+            "dati_visivi": None
+        }
 
     messaggi_completi = memoria_conversazioni[chat_id]
     messaggi_per_llm = [messaggi_completi[0]]
@@ -695,7 +723,16 @@ REGOLE GLOBALI:
     risposta_assistente = ""
     for msg in reversed(nuovi_messaggi):
         if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
-            risposta_assistente = msg.content
+            contenuto_messaggio = msg.content.strip()
+            if "STOP TOOL" in contenuto_messaggio:
+                continue
+            if "ORDINE TASSATIVO" in contenuto_messaggio:
+                continue
+            if "Avvisa l'utente" in contenuto_messaggio:
+                continue
+            if "NON chiamare più nessun tool" in contenuto_messaggio:
+                continue
+            risposta_assistente = contenuto_messaggio
             break
 
     memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
