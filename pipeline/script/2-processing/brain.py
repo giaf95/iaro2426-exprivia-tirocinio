@@ -243,7 +243,9 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
 @tool
 def cerca_sito_web(query: str) -> str:
     """Usa questo tool ESCLUSIVAMENTE per cercare informazioni testuali sul SITO WEB aziendale (es. assistenza, garanzia, policy, servizi).
-    DIVIETO ASSOLUTO: NON usare MAI questo tool se l'utente nomina le parole 'catalogo', 'kW', 'potenza', 'gas', o cerca specifiche 'macchine' e 'modelli'. Per quelle richieste sei OBBLIGATO a usare i tool del catalogo, anche se la domanda ti sembra complessa."""
+    DIVIETO ASSOLUTO: NON usare MAI questo tool se l'utente nomina le parole 'catalogo', 'kW', 'potenza', 'gas', o cerca specifiche 'macchine' e 'modelli'. Per quelle richieste sei OBBLIGATO a usare i tool del catalogo, anche se la domanda ti sembra complessa.
+    ARGOMENTI DA PASSARE DIRETTAMENTE:
+    - query: scrivi l'argomento esatto da cercare all'interno del sito."""
     print(f"[TOOL] Query in ingresso: '{query}'")
     
     if not db_web:
@@ -689,7 +691,11 @@ REGOLE GLOBALI:
         tempo_trascorso = end_time - start_time
         print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
     except Exception as e:
-        return {"testo": f"Si è verificato un errore nel motore: {e}", "azioni": []}
+        return {
+            "testo": f"Si è verificato un errore interno durante l'elaborazione: {str(e)}", 
+            "azioni": [], 
+            "dati_visivi": None
+        }
 
     nuovi_messaggi = result["messages"]
 
