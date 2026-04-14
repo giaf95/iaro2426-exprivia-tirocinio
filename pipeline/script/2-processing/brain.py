@@ -68,10 +68,10 @@ def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
 
 @tool
 def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente fornisce un CODICE ESATTO di un SINGOLO MODELLO (es. '061-035' o 'PAL 061') e vuole sapere un suo dato tecnico (es. dimensioni, peso, potenza).
-    ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - codice_modello: estrai SOLO il codice esatto (es. '061-035').
-    - parametro_richiesto: la grandezza fisica da cercare (es. 'peso', 'dimensioni')."""
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente fornisce un CODICE ALFANUMERICO ESATTO di un modello (es. '061-035') e vuole sapere un suo dato tecnico.
+    ISTRUZIONI: 
+    1. 'codice_modello': estrai SOLO il codice esatto (es. '061-035').
+    2. 'parametro_richiesto': la grandezza fisica da cercare."""
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_SPECIFICO")
     print(f"[TOOL] Ricerca chirurgica -> Modello: '{modello}' | Parametro: '{parametro}'")
     
@@ -104,15 +104,13 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
 
 @tool
 def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decrescente", top_n: int = 3, valore_target: float = None) -> str:
-    """Usa questo tool per cercare e filtrare i modelli a catalogo tramite dati tecnici.
-    DIVIETO ASSOLUTO 1: NON usare questo tool per il sito web o per le garanzie.
-    DIVIETO ASSOLUTO 2: NON usare questo tool se l'utente chiede i dati di un SINGOLO MODELLO specifico (es. 'dimensioni del modello PAL 061'). Per i modelli singoli usa OBBLIGATORIAMENTE 'cerca_catalogo_specifico'.
-    Se l'utente chiede più condizioni (es. potenza e gas insieme), usa il parametro numerico principale (es. la potenza) per 'parametro_richiesto'.
-    ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - parametro_richiesto: Inserisci ESATTAMENTE il nome della colonna principale da filtrare.
-    - ordinamento: 'crescente' o 'decrescente' (SE NON SAI COSA METTERE, scrivi sempre 'decrescente').
-    - top_n: numero di modelli (SE L'UTENTE NON LO SPECIFICA, scrivi sempre 5).
-    - valore_target: (OPZIONALE) Il numero target da cercare (es. 50)."""
+    """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo.
+    REGOLA FONDAMENTALE: Usa SOLO i parametri richiesti.
+    PARAMETRI:
+    - 'parametro_richiesto': Inserisci ESATTAMENTE il nome della colonna.
+    - 'ordinamento': 'crescente' o 'decrescente'.
+    - 'top_n': il numero di modelli da restituire.
+    - 'valore_target': (OPZIONALE) Se l'utente o il Calcolatore ti chiedono un modello per coprire un certo fabbisogno in kW, inserisci qui il numero. Il tool filtrerà i modelli adatti."""
     print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
     print(f"[TOOL] Estrazione -> Parametro: '{parametro_richiesto}', Ordine: '{ordinamento}', Top: {top_n}")
 
@@ -245,10 +243,8 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
 
 @tool
 def cerca_sito_web(query: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE per cercare informazioni testuali sul SITO WEB aziendale (es. assistenza, garanzia, policy, servizi).
-    DIVIETO ASSOLUTO: NON usare MAI questo tool se l'utente nomina le parole 'catalogo', 'kW', 'potenza', 'gas', o cerca specifiche 'macchine' e 'modelli'. Per quelle richieste sei OBBLIGATO a usare i tool del catalogo, anche se la domanda ti sembra complessa.
-    ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - query: scrivi l'argomento esatto da cercare all'interno del sito."""
+    """Usa questo tool per cercare procedure passo-passo, guide all'installazione, troubleshooting e codici di errore.
+    REGOLA FERREA: Usa un UNICO parametro stringa chiamato 'query' contenente le parole chiave."""
     print(f"[TOOL] Query in ingresso: '{query}'")
     
     if not db_web:
@@ -549,8 +545,7 @@ dati_visivi_temporanei = None
 
 @tool
 def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "grafico", top_n: int = 5) -> str:
-    """Usa questo tool ESCLUSIVAMENTE se l'utente digita esplicitamente le parole 'grafico', 'diagramma' o 'tabella'.
-    Se l'utente fa una ricerca normale (es. 'quali macchine...', 'mostrami i modelli...'), NON usare questo tool, devi usare 'cerca_catalogo_generico'.
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede un GRAFICO, un diagramma o una TABELLA visiva.
     ARGOMENTI DA PASSARE DIRETTAMENTE:
     - parametro_asse_y: Inserisci ESATTAMENTE il nome della colonna da analizzare.
     - tipo_visualizzazione: Scrivi "grafico" se l'utente chiede un grafico/diagramma. Scrivi "tabella" se chiede una tabella.
@@ -600,7 +595,8 @@ def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "gra
 
     dati_visivi_temporanei = dati_per_grafico
 
-    return "Ecco i dati che hai richiesto:"
+    return "Dati estratti e inviati al frontend. Avvisa l'utente che i dati visivi sono a schermo.\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Hai estratto i dati! ORA FERMATI. NON chiamare più nessun tool. Scrivi immediatamente la risposta finale all'utente confermando che l'analisi è visibile."
+#3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
 def call_model(state: AgentState):
     print("\nL'intelligenza artificiale sta analizzando i dati e generating la risposta...")
@@ -660,11 +656,8 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
 - Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
 
-8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o una TABELLA:
-           - Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
-           - Se l'utente NON chiede esplicitamente grafici o tabelle, NON usare 'prepara_dati_grafico' e usa le normali funzioni di ricerca.
-                                              
-9. SITO WEB vs CATALOGO: Se l'utente chiede informazioni su garanzie, assistenza post-vendita, policy o nomina il sito web, usa ESCLUSIVAMENTE il tool 'cerca_sito_web'. È severamente vietato usare i tool del catalogo per queste richieste.
+8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o un'analisi visiva:
+- Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
@@ -695,11 +688,7 @@ REGOLE GLOBALI:
         tempo_trascorso = end_time - start_time
         print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
     except Exception as e:
-        return {
-            "testo": f"Si è verificato un errore interno durante l'elaborazione: {str(e)}", 
-            "azioni": [], 
-            "dati_visivi": None
-        }
+        return {"testo": f"Si è verificato un errore nel motore: {e}", "azioni": []}
 
     nuovi_messaggi = result["messages"]
 
