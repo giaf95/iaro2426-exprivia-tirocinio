@@ -66,10 +66,10 @@ def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
 
 @tool
 def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente fornisce un CODICE ALFANUMERICO ESATTO di un modello (es. '061-035') e vuole sapere un suo dato tecnico.
-    ISTRUZIONI: 
-    1. 'codice_modello': estrai SOLO il codice esatto (es. '061-035').
-    2. 'parametro_richiesto': la grandezza fisica da cercare."""
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente fornisce un CODICE ESATTO di un SINGOLO MODELLO (es. '061-035' o 'PAL 061') e vuole sapere un suo dato tecnico (es. dimensioni, peso, potenza).
+    ARGOMENTI DA PASSARE DIRETTAMENTE:
+    - codice_modello: estrai SOLO il codice esatto (es. '061-035').
+    - parametro_richiesto: la grandezza fisica da cercare (es. 'peso', 'dimensioni')."""
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_SPECIFICO")
     print(f"[TOOL] Ricerca chirurgica -> Modello: '{codice_modello}' | Parametro: '{parametro_richiesto}'")
     
@@ -103,7 +103,8 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
 @tool
 def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decrescente", top_n: int = 3, valore_target: float = None) -> str:
     """Usa questo tool per cercare e filtrare i modelli a catalogo tramite dati tecnici.
-    DIVIETO ASSOLUTO: NON usare questo tool per il sito web o per le garanzie.
+    DIVIETO ASSOLUTO 1: NON usare questo tool per il sito web o per le garanzie.
+    DIVIETO ASSOLUTO 2: NON usare questo tool se l'utente chiede i dati di un SINGOLO MODELLO specifico (es. 'dimensioni del modello PAL 061'). Per i modelli singoli usa OBBLIGATORIAMENTE 'cerca_catalogo_specifico'.
     Se l'utente chiede più condizioni (es. potenza e gas insieme), usa il parametro numerico principale (es. la potenza) per 'parametro_richiesto'.
     ARGOMENTI DA PASSARE DIRETTAMENTE:
     - parametro_richiesto: Inserisci ESATTAMENTE il nome della colonna principale da filtrare.
