@@ -852,6 +852,52 @@ REGOLE GLOBALI:
         "dati_visivi": dati_da_esportare
     }
 
+@tool 
+def estrai_dati_dinamici(richiesta_utente: str) -> str:
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di filtrare dati o creare un dataframe per un grafico. 
+    Passa in 'richiesta_utente' la frase esatta dell'utente."""
+    try:
+        cartella_corrente = os.path.dirname(os.path.abspath(__file__))
+        cartella_script = os.path.dirname(cartella_corrente)
+        cartella_pipeline = os.path.dirname(cartella_script)
+        percorso_excel = os.path.join(cartella_pipeline, 'data', '1-preprocessing', 'catalogo.xlsx')
+        cartella_temp = os.path.join(cartella_pipeline, 'data', '1-preprocessing')
+        os.makedirs(cartella_temp, exist_ok=True)
+        path_salvataggio = os.path.join(cartella_temp, 'dataframe_grafico.csv')
+        df_caricato = pd.read_excel(percorso_excel)
+        colonne_reali = list(df_caricato.columns)
+        prompt = f"""
+        Sei un programmatore Python esperto in analisi dati con Pandas.
+        Il tuo compito è tradurre questa richiesta in codice: '{richiesta_utente}'
+        
+        Hai a disposizione in memoria un dataframe Pandas chiamato 'df_catalogo'.
+        Per evitare errori 'KeyError', ecco la lista ESATTA delle colonne disponibili nel dataframe:
+        {colonne_reali}
+        
+        REGOLE:
+        1. Salva il risultato finale in una variabile chiamata esattamente 'df_risultato'.
+        2. Scrivi SOLO ed ESCLUSIVAMENTE codice Python. 
+        3. Niente saluti, niente spiegazioni, niente formattazione markdown (```python).
+        """
+        llm = ChatOllama(model="qwen2.5:7b-instruct-q4_K_M", temperature=0)
+        risposta_llm = llm.invoke(prompt)
+        codice_python = risposta_llm.content
+        codice_pulito = codice_python.replace("```python", "").replace("```", "").strip()
+        print(f"\n[DEBUG LLM] Codice Pandas generato e in esecuzione:\n{codice_pulito}\n")
+    
+        scatola_sicura = {
+            "pd": pd,
+            "df_catalogo": df_caricato
+        }
+        exec(codice_pulito, {}, scatola_sicura)
+        df_finale = scatola_sicura.get("df_risultato")
+        if df_finale is None:
+            return "Errore: il codice generato non ha prodotto una variabile 'df_risultato'."
+        
+        df_finale.to_csv(path_salvataggio, index=False)
+        return f"Dati dinamici estratti e salvati in '{path_salvataggio}'."
+    except Exception as e:
+        return f"Si è verificato un errore durante l'estrazione dei dati dinamici: {e}"
 
 
 #5 INIZIALIZZAZIONE GLOBALE E SETUP
@@ -881,7 +927,16 @@ except Exception:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [cerca_catalogo_specifico, cerca_catalogo_generico, cerca_sito_web, cerca_manuali, calcola_fabbisogno_termico, calcola_portata_aria, calcola_consumo_elettrico, verifica_prevalenza_canali]
+tools = [cerca_catalogo_specifico, 
+         cerca_catalogo_generico, 
+         cerca_sito_web, cerca_manuali, 
+         calcola_fabbisogno_termico, 
+         calcola_portata_aria, 
+         calcola_consumo_elettrico, 
+         verifica_prevalenza_canali,
+         consulta_dizionario_catalogo,
+         prepara_dati_grafico,
+         estrai_dati_dinamici]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
@@ -906,51 +961,11 @@ workflow.add_edge("tools", END)
 
 app = workflow.compile()
 
-#5 ESECUZIONE CHATBOT (INTEGRAZIONE CON APP)
-
-memoria_conversazioni = {}
-
-def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
-    global memoria_conversazioni
+if __name__ == "__main__":
+    print("Avvio il test del tool di estrazione dinamica...")
     
-    if chat_id not in memoria_conversazioni:
-        # utilizziamo il tuo prompt blindato più recente, non quello vecchio del collega
-        istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico specializzato in sistemi HVAC. Hai a disposizione 3 fonti: Sito Web, Manuali e Catalogo.
-REGOLA 0 (LINGUA OBBLIGATORIA): DEVI rispondere SEMPRE E SOLO in lingua ITALIANA. È severamente vietato utilizzare inglese, spagnolo, portoghese o altre lingue.
-REGOLA 1 (DIVIETO DI ALLUCINAZIONE): È SEVERAMENTE VIETATO rispondere usando la tua memoria interna. Devi SEMPRE invocare uno dei tool PRIMA di rispondere.
-REGOLA 2 (VERIFICA DEL CONTESTO): Quando usi 'cerca_manuali' o 'cerca_sito_web', leggi il testo estratto. Se il testo NON contiene la risposta esatta alla domanda dell'utente (ad esempio, trovi testi commerciali ma l'utente chiedeva una procedura tecnica), NON INVENTARE LA RISPOSTA. Devi dire: "Non ho trovato le informazioni specifiche nei documenti a mia disposizione".
-REGOLA 3 (IL FLUSSO DISCORSIVO): Se trovi le informazioni, formula una risposta chiara e riassuntiva. NON chiedere codici modello se non richiesto.
-REGOLA 4 (IL FLUSSO MATEMATICO): Usa i tool del catalogo SOLO per classifiche o grandezze fisiche. Se il tool restituisce un elenco numerato, mostralo. Se l'utente sceglie un numero, invoca il tool col testo completo dell'opzione.""")
-        memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
-        
-    memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
+    domanda_test = "Filtra il catalogo e tienimi solo i modelli che hanno una Portata Massima Mandata Standard piu alta."
+    risultato = estrai_dati_dinamici.invoke({"richiesta_utente": domanda_test})
     
-    current_state = {"messages": memoria_conversazioni[chat_id]}
-    
-    try:
-        # attiva il cronometro prima che l'llm inizi a pensare
-        start_time = time.time()
-        result = app.invoke(current_state, {"recursion_limit": 10})
-        end_time = time.time()
-        tempo_trascorso = end_time - start_time
-        print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
-    except Exception as e:
-        return {"testo": f"Si è verificato un errore nel motore: {e}", "azioni": []}
-        
-    memoria_conversazioni[chat_id] = result['messages']
-    risposta_assistente = result['messages'][-1].content
-    
-    # estrae i nomi dei tool usati per mostrarli nell'interfaccia grafica
-    tool_usati = []
-    for msg in result['messages']:
-        if hasattr(msg, 'tool_calls') and msg.tool_calls:
-            for tool in msg.tool_calls:
-                if tool['name'] not in tool_usati:
-                    tool_usati.append(tool['name'])
-
-    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
-                    
-    return {
-        "testo": risposta_assistente,
-        "azioni": tool_usati
-    }
+    print("\n--- RISPOSTA DEL TOOL ---")
+    print(risultato)
