@@ -543,7 +543,8 @@ dati_visivi_temporanei = None
 
 @tool
 def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "grafico", top_n: int = 5) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede un GRAFICO, un diagramma o una TABELLA visiva.
+    """Usa questo tool ESCLUSIVAMENTE se l'utente digita esplicitamente le parole 'grafico', 'diagramma' o 'tabella'.
+    Se l'utente fa una ricerca normale (es. 'quali macchine...', 'mostrami i modelli...'), NON usare questo tool, devi usare 'cerca_catalogo_generico'.
     ARGOMENTI DA PASSARE DIRETTAMENTE:
     - parametro_asse_y: Inserisci ESATTAMENTE il nome della colonna da analizzare.
     - tipo_visualizzazione: Scrivi "grafico" se l'utente chiede un grafico/diagramma. Scrivi "tabella" se chiede una tabella.
@@ -593,8 +594,7 @@ def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "gra
 
     dati_visivi_temporanei = dati_per_grafico
 
-    return "Dati estratti e inviati al frontend. Avvisa l'utente che i dati visivi sono a schermo.\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Hai estratto i dati! ORA FERMATI. NON chiamare più nessun tool. Scrivi immediatamente la risposta finale all'utente confermando che l'analisi è visibile."
-#3 FUNZIONI DI LANGGRAPH E LOGICA AI
+    return "Ecco i dati che hai richiesto:"
 
 def call_model(state: AgentState):
     print("\nL'intelligenza artificiale sta analizzando i dati e generating la risposta...")
@@ -653,8 +653,9 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
 - Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
 
-8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o un'analisi visiva:
-- Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
+8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o una TABELLA:
+           - Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
+           - Se l'utente NON chiede esplicitamente grafici o tabelle, NON usare 'prepara_dati_grafico' e usa le normali funzioni di ricerca.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
