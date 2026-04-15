@@ -67,11 +67,11 @@ def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
 #2 DEFINIZIONE DEI TOOL
 
 @tool
-def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> str:
+def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
     """Usa questo tool SEMPRE e SOLO quando l'utente nomina un MODELLO SPECIFICO (es. '091-051' o '061-035').
     ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - codice_modello: estrai SOLO il codice esatto (es. '091-051').
-    - parametro_richiesto: il parametro tecnico da cercare."""
+    - modello: estrai SOLO il codice esatto (es. '091-051').
+    - parametro: la grandezza fisica da cercare (es. 'Portata Massima Mandata')."""
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_SPECIFICO")
     print(f"[TOOL] Ricerca chirurgica -> Modello: '{modello}' | Parametro: '{parametro}'")
     
@@ -79,7 +79,7 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
         return "Errore: file Excel non caricato."
     
     # pulizia del codice cercato
-    codice_pulito = codice_modello.upper().replace("MODELLO", "").strip()
+    codice_pulito = modello.upper().replace("MODELLO", "").strip()
     
     # cerca la riga esatta nel DataFrame Pandas
     df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
@@ -87,12 +87,16 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
     if df_modello.empty:
         return f"Modello {codice_pulito} non trovato nel catalogo Excel."
         
+    # salvagente anti-crash se l'AI dimentica il parametro
+    if parametro == "Tutti" or parametro.strip() == "":
+         return f"Hai trovato il modello {codice_pulito}, ma non hai estratto il parametro richiesto! Chiedi all'utente cosa vuole sapere di preciso (es. dimensioni, peso, portata)."
+         
     # cerca le colonne che contengono la parola richiesta
-    richiesta_pulita = parametro_richiesto.lower().strip()
+    richiesta_pulita = parametro.lower().strip()
     colonne_trovate = [col for col in colonne_catalogo if richiesta_pulita in str(col).lower()]
     
     if not colonne_trovate:
-         return f"Il parametro '{parametro_richiesto}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
+         return f"Il parametro '{parametro}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
          
     # estrae tutti i parametri trovati
     risultati = []
