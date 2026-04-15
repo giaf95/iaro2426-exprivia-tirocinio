@@ -543,11 +543,12 @@ dati_visivi_temporanei = None
 
 @tool
 def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "grafico", top_n: int = 5) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede un GRAFICO, un diagramma o una TABELLA visiva.
+    """Usa questo tool SOLO SE l'utente scrive ESPLICITAMENTE le parole 'grafico', 'diagramma' o 'tabella'.
+    DIVIETO ASSOLUTO: Se l'utente fa una ricerca normale (es. 'quali macchine...', 'mostrami i modelli...'), NON ESSERE PROATTIVO per abbellire la risposta: ti è VIETATO usare questo tool. Usa 'cerca_catalogo_generico'.
     ARGOMENTI DA PASSARE DIRETTAMENTE:
     - parametro_asse_y: Inserisci ESATTAMENTE il nome della colonna da analizzare.
     - tipo_visualizzazione: Scrivi "grafico" se l'utente chiede un grafico/diagramma. Scrivi "tabella" se chiede una tabella.
-    - top_n: il numero di modelli da mostrare nel grafico/tabella."""
+    - top_n: il numero di modelli da mostrare."""
     global dati_visivi_temporanei
     print(f"\n[TOOL] Esecuzione PREPARA_DATI_GRAFICO -> Asse Y: {parametro_asse_y} | Tipo: {tipo_visualizzazione}")
 
@@ -654,10 +655,9 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
 - Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
 
-8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o un'analisi visiva:
-- Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico' solo se la richiesta è esplicitamente visiva.
-- NON generare tabelle in Markdown.
-- Se l'utente chiede solo il valore di un parametro di un modello specifico, NON usare questo tool.
+8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o una TABELLA visiva:
+- Usa il tool 'prepara_dati_grafico' SOLO E SOLTANTO SE l'utente ha scritto testualmente una di queste tre parole.
+- NON usare questo tool di tua iniziativa per "abbellire" i risultati. Per le ricerche normali sei OBBLIGATO a usare sempre 'cerca_catalogo_generico'.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
