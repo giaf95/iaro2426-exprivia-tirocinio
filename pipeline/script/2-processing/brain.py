@@ -66,10 +66,10 @@ def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
 
 @tool
 def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente fornisce un CODICE ALFANUMERICO ESATTO di un modello (es. '061-035') e vuole sapere un suo dato tecnico.
-    ISTRUZIONI: 
-    1. 'codice_modello': estrai SOLO il codice esatto (es. '061-035').
-    2. 'parametro_richiesto': la grandezza fisica da cercare."""
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente fornisce un CODICE ESATTO di un SINGOLO MODELLO (es. '091-051' o 'PAL 091') e vuole sapere un suo dato tecnico.
+    ARGOMENTI DA PASSARE DIRETTAMENTE:
+    - codice_modello: estrai SOLO il codice esatto (es. '091-051').
+    - parametro_richiesto: la grandezza fisica da cercare (es. 'Portata Massima Mandata')."""
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_SPECIFICO")
     print(f"[TOOL] Ricerca chirurgica -> Modello: '{codice_modello}' | Parametro: '{parametro_richiesto}'")
     
@@ -503,10 +503,10 @@ def verifica_prevalenza_canali(codici_modelli: str, pascal_persi_impianto: float
 
 @tool
 def consulta_dizionario_catalogo(parola_chiave: str = "") -> str:
-    """Usa ESCLUSIVAMENTE questo tool per rispondere a domande su COSA c'è nel catalogo, sul SIGNIFICATO delle caratteristiche, o su COME vengono misurati i parametri (es. rumorosità, decibel, tipo di gas, alimentazione, trifase).
-    REGOLA: Se l'utente NON chiede un calcolo matematico, ma chiede spiegazioni discorsive, usa sempre questo tool.
-    PARAMETRI:
-    - parola_chiave: (Opzionale) La parola da cercare (es. 'rumorosità', 'gas'). Lascia vuoto per leggere tutto."""
+    """Usa ESCLUSIVAMENTE questo tool per rispondere a domande su COSA c'è nel catalogo, sul SIGNIFICATO delle caratteristiche, o su COME vengono misurati i parametri.
+    DIVIETO ASSOLUTO: NON usare MAI questo tool se l'utente nomina un modello specifico (es. 091-051).
+    ARGOMENTI DA PASSARE DIRETTAMENTE:
+    - parola_chiave: La parola esatta da cercare. È OBBLIGATORIO compilare questo campo."""
     print(f"\n[TOOL] Esecuzione CONSULTA_DIZIONARIO -> Ricerca: '{parola_chiave}'")
 
     # Percorso relativo sicuro
@@ -537,7 +537,7 @@ def consulta_dizionario_catalogo(parola_chiave: str = "") -> str:
         else:
             return f"Nessuna voce trovata per '{parola_chiave}'. Ecco il dizionario:\n\n{contenuto}"
 
-    return f"Ecco il dizionario completo:\n\n{contenuto}"
+    return "Devi inserire una parola chiave specifica per consultare il dizionario."
 
 dati_visivi_temporanei = None
 
@@ -646,8 +646,8 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Usa 'verifica_prevalenza_canali' passando i modelli e i Pascal richiesti.
 
 5. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
-- Se nella richiesta è presente un codice modello esatto nel formato 000-000, usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
-- In questo caso NON usare 'prepara_dati_grafico' a meno che l'utente chieda esplicitamente un grafico, un diagramma o una tabella visiva.
+- Se nella richiesta è presente un codice modello (es. 000-000), usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
+- È SEVERAMENTE VIETATO usare 'consulta_dizionario_catalogo' o 'cerca_catalogo_generico' per modelli specifici.
 
 6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
 - Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
