@@ -85,87 +85,14 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
     if df_modello.empty:
         return f"Modello {codice_pulito} non trovato nel catalogo Excel."
         
-    # cerca la colonna richiesta con match esatto o fuzzy
-    richiesta_esatta = parametro_richiesto.replace("_", " ").strip().lower()
-    richiesta_esatta = re.sub(r"\bqual\s+è\b", "", richiesta_esatta)
-    richiesta_esatta = re.sub(r"\bquale\b", "", richiesta_esatta)
-    richiesta_esatta = re.sub(r"\bmodello\b", "", richiesta_esatta)
-    richiesta_esatta = re.sub(r"\bdel\b", "", richiesta_esatta)
-    richiesta_esatta = re.sub(r"\bdella\b", "", richiesta_esatta)
-    richiesta_esatta = re.sub(r"\bdei\b", "", richiesta_esatta)
-    richiesta_esatta = re.sub(r"\bdegli\b", "", richiesta_esatta)
-    richiesta_esatta = richiesta_esatta.replace("?", "").replace(":", "").strip()
-    richiesta_esatta = " ".join(richiesta_esatta.split())
-
-    colonne_trovate = []
-    for col in colonne_catalogo:
-        col_pulita_spazi = " ".join(str(col).split()).lower()
-        if col_pulita_spazi == richiesta_esatta:
-            colonne_trovate = [col]
-            break
-
+    # cerca le colonne che contengono la parola richiesta
+    richiesta_pulita = parametro_richiesto.lower().strip()
+    colonne_trovate = [col for col in colonne_catalogo if richiesta_pulita in str(col).lower()]
+    
     if not colonne_trovate:
-        richiesta_pulita = re.sub(r"[^a-zA-Z0-9]", " ", richiesta_esatta).lower()
-        parole_richiesta = []
-        for p in richiesta_pulita.split():
-            if len(p) > 0:
-                parole_richiesta.append(p)
-
-        punteggi = {}
-        for col in colonne_catalogo:
-            col_pulita = re.sub(r"[^a-zA-Z0-9]", " ", str(col).lower())
-            parole_col = col_pulita.split()
-
-            score = 0
-            for pr in parole_richiesta:
-                for pc in parole_col:
-                    if pr == pc or pr in pc:
-                        score = score + 1
-
-            if score > 0:
-                punteggi[col] = score
-
-        if len(punteggi) == 0:
-            match_simili = difflib.get_close_matches(richiesta_esatta, list(colonne_catalogo), n=5, cutoff=0.1)
-
-            if len(match_simili) > 0:
-                opzioni = match_simili
-            else:
-                opzioni = colonne_catalogo[:5]
-
-            testo_opzioni = ""
-            for opt in opzioni:
-                testo_opzioni = testo_opzioni + "- " + opt + "\n"
-
-            return "Dì all'utente ESATTAMENTE questo: 'Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n" + testo_opzioni + "'"
-
-        max_score = 0
-        for val in punteggi.values():
-            if val > max_score:
-                max_score = val
-
-        soglia = len(parole_richiesta) * 0.5
-        if soglia < 1:
-            soglia = 1
-
-        migliori_colonne = []
-        for col, score in punteggi.items():
-            if score == max_score and score >= soglia:
-                migliori_colonne.append(col)
-
-        if len(migliori_colonne) > 1:
-            testo_opzioni = ""
-            for opt in migliori_colonne:
-                testo_opzioni = testo_opzioni + "- " + opt + "\n"
-
-            return "Dì all'utente ESATTAMENTE questo: 'Il parametro è ambiguo. Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n" + testo_opzioni + "'"
-
-        elif len(migliori_colonne) == 1:
-            colonne_trovate = [migliori_colonne[0]]
-            print(f"[TOOL] Match parziale trovato: '{parametro_richiesto}' diventerà '{migliori_colonne[0]}'")
-        else:
-            return "Nessuna colonna valida trovata. Chiedi all'utente di riformulare la domanda."
-
+         return f"Il parametro '{parametro_richiesto}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
+         
+    # estrae tutti i parametri trovati
     risultati = []
     for col in colonne_trovate:
         valore = df_modello.iloc[0].get(col, "N/D")
@@ -743,26 +670,8 @@ REGOLE GLOBALI:
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
 
-    match_modello = re.search(r"\b\d{3}-\d{3}\b", user_query)
-    query_minuscola = user_query.lower()
-    richiesta_visiva = any(parola in query_minuscola for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
-
-    if match_modello and not richiesta_visiva:
-        codice_modello = match_modello.group(0)
-        parametro_richiesto = user_query
-
-        risposta_assistente = cerca_catalogo_specifico.invoke({
-            "codice_modello": codice_modello,
-            "parametro_richiesto": parametro_richiesto
-        })
-
-        memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
-
-        return {
-            "testo": risposta_assistente,
-            "azioni": ["cerca_catalogo_specifico"],
-            "dati_visivi": None
-        }
+    match_modello_specifico = re.search(r"\b\d{3}-\d{3}\b", user_query)
+    richiesta_visiva = any(parola in user_query.lower() for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
 
     messaggi_completi = memoria_conversazioni[chat_id]
     messaggi_per_llm = [messaggi_completi[0]]
@@ -789,16 +698,7 @@ REGOLE GLOBALI:
     risposta_assistente = ""
     for msg in reversed(nuovi_messaggi):
         if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
-            contenuto_messaggio = msg.content.strip()
-            if "STOP TOOL" in contenuto_messaggio:
-                continue
-            if "ORDINE TASSATIVO" in contenuto_messaggio:
-                continue
-            if "Avvisa l'utente" in contenuto_messaggio:
-                continue
-            if "NON chiamare più nessun tool" in contenuto_messaggio:
-                continue
-            risposta_assistente = contenuto_messaggio
+            risposta_assistente = msg.content
             break
 
     memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
