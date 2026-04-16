@@ -602,50 +602,63 @@ def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "gra
 
 @tool 
 def estrai_dati_dinamici(richiesta_utente: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di filtrare dati o creare un dataframe per un grafico. 
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di elaborare i dati in modo complesso, estrarre file o creare nuovi dataframe personalizzati. 
     Passa in 'richiesta_utente' la frase esatta dell'utente."""
+    global df_catalogo, llm # Richiamiamo le variabili globali già caricate
+    
+    if df_catalogo is None:
+         return "Errore: database catalogo non caricato in memoria."
+         
     try:
         cartella_corrente = os.path.dirname(os.path.abspath(__file__))
-        cartella_script = os.path.dirname(cartella_corrente)
-        cartella_pipeline = os.path.dirname(cartella_script)
-        percorso_excel = os.path.join(cartella_pipeline, 'data', '1-preprocessing', 'catalogo.xlsx')
+        cartella_pipeline = os.path.dirname(os.path.dirname(cartella_corrente))
         cartella_temp = os.path.join(cartella_pipeline, 'data', '1-preprocessing')
         os.makedirs(cartella_temp, exist_ok=True)
         path_salvataggio = os.path.join(cartella_temp, 'dataframe_grafico.csv')
-        df_caricato = pd.read_excel(percorso_excel)
-        colonne_reali = list(df_caricato.columns)
+        
+        colonne_reali = list(df_catalogo.columns)
         prompt = f"""
         Sei un programmatore Python esperto in analisi dati con Pandas.
         Il tuo compito è tradurre questa richiesta in codice: '{richiesta_utente}'
         
         Hai a disposizione in memoria un dataframe Pandas chiamato 'df_catalogo'.
-        Per evitare errori 'KeyError', ecco la lista ESATTA delle colonne disponibili nel dataframe:
+        Per evitare errori 'KeyError', ecco la lista ESATTA delle colonne:
         {colonne_reali}
         
         REGOLE:
         1. Salva il risultato finale in una variabile chiamata esattamente 'df_risultato'.
-        2. Scrivi SOLO ed ESCLUSIVAMENTE codice Python. 
-        3. Niente saluti, niente spiegazioni, niente formattazione markdown (```python).
+        2. Scrivi SOLO codice all'interno di un blocco ```python ... ```.
         """
-        llm = ChatOllama(model="qwen2.5:7b-instruct-q4_K_M", temperature=0)
+        
+        # Usiamo l'LLM globale, senza instanziarlo di nuovo
         risposta_llm = llm.invoke(prompt)
-        codice_python = risposta_llm.content
-        codice_pulito = codice_python.replace("```python", "").replace("```", "").strip()
+        testo_risposta = risposta_llm.content
+        
+        # Estrazione sicura tramite regex
+        match = re.search(r"```python\n(.*?)\n```", testo_risposta, re.DOTALL)
+        if match:
+            codice_pulito = match.group(1).strip()
+        else:
+            codice_pulito = testo_risposta.replace("```python", "").replace("```", "").strip()
+            
         print(f"\n[DEBUG LLM] Codice Pandas generato e in esecuzione:\n{codice_pulito}\n")
     
         scatola_sicura = {
             "pd": pd,
-            "df_catalogo": df_caricato
+            "df_catalogo": df_catalogo.copy() # Lavoriamo su una copia per non sporcare l'originale
         }
+        
+        # Avviso di sicurezza: exec() esegue codice arbitrario. In produzione è un rischio.
         exec(codice_pulito, {}, scatola_sicura)
         df_finale = scatola_sicura.get("df_risultato")
+        
         if df_finale is None:
             return "Errore: il codice generato non ha prodotto una variabile 'df_risultato'."
         
         df_finale.to_csv(path_salvataggio, index=False)
-        return f"Dati dinamici estratti e salvati in '{path_salvataggio}'."
+        return f"Dati dinamici estratti ed elaborati con successo. Avvisa l'utente."
     except Exception as e:
-        return f"Si è verificato un errore durante l'estrazione dei dati dinamici: {e}"
+        return f"Si è verificato un errore di compilazione o logica durante l'estrazione: {e}"
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
@@ -710,6 +723,9 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o una TABELLA visiva:
 - Usa il tool 'prepara_dati_grafico' SOLO E SOLTANTO SE l'utente ha scritto testualmente una di queste tre parole.
 - NON usare questo tool di tua iniziativa per "abbellire" i risultati. Per le ricerche normali sei OBBLIGATO a usare sempre 'cerca_catalogo_generico'.
+
+9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati per Python":
+- Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente in modo che possa generare il codice corretto.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
