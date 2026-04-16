@@ -661,6 +661,84 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
     except Exception as e:
         return f"ERRORE DI ESECUZIONE PYTHON: {e}\n\n=== STOP TOOL ===\nORDINE PER L'AI: Il codice ha generato un errore. NON RITENTARE. Rispondi all'utente dicendo che non sei riuscito a generare il codice corretto per l'estrazione."
 
+@tool
+def genera_grafico_avanzato(richiesta_utente: str) -> str:
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente ti chiede di disegnare o generare un grafico complesso basato sull'ultimo file CSV estratto.
+    Passa l'intera richiesta dell'utente nel parametro 'richiesta_utente'."""
+    global llm, dati_visivi_temporanei
+    print(f"\n[TOOL] Esecuzione GENERA_GRAFICO_AVANZATO -> Richiesta: '{richiesta_utente}'")
+    
+    try:
+        # Costruzione sicura dei percorsi con os.path
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
+        
+        csv_path = os.path.join(pipeline_dir, 'data', '1-preprocessing', 'dataframe_grafico.csv')
+        cartella_ui = os.path.join(pipeline_dir, 'data', '3-user_interface')
+        os.makedirs(cartella_ui, exist_ok=True)
+        json_path = os.path.join(cartella_ui, 'grafico_generato.json')
+        
+        if not os.path.exists(csv_path):
+            return "Errore: Il file 'dataframe_grafico.csv' non esiste. Dì all'utente che deve prima estrarre i dati."
+            
+        # Leggiamo le colonne dal CSV per dare contesto all'LLM e non fargliele inventare
+        df_temp = pd.read_csv(csv_path)
+        colonne = list(df_temp.columns)
+        
+        prompt = f"""
+        Sei un programmatore Python esperto in data visualization.
+        Il tuo compito è scrivere il codice per generare un grafico Plotly basato su questa richiesta: '{richiesta_utente}'
+        
+        Hai a disposizione due variabili testuali già pronte nel tuo ambiente: 
+        - 'csv_path': il percorso del file CSV da leggere.
+        - 'json_path': il percorso dove salvare il grafico generato.
+        
+        Ecco le colonne presenti nel CSV (usa ESATTAMENTE questi nomi): {colonne}
+        
+        REGOLE:
+        1. Importa le librerie necessarie (import pandas as pd, import plotly.express as px).
+        2. Carica i dati in questo modo: df = pd.read_csv(csv_path)
+        3. Genera la figura con plotly.express e salvala in una variabile chiamata 'fig'.
+        4. Salva la figura sul disco in questo modo esatto: fig.write_json(json_path)
+        5. DIVIETO ASSOLUTO: NON USARE fig.show(). Farebbe crashare il sistema.
+        6. Restituisci SOLO il codice dentro i backtick ```python ... ``` senza commenti testuali.
+        """
+        
+        # Usiamo l'istanza globale di Qwen senza ricaricarlo in RAM
+        risposta_llm = llm.invoke(prompt)
+        testo_risposta = risposta_llm.content
+        
+        # Estrazione sicura del codice
+        match = re.search(r"```python\n(.*?)\n```", testo_risposta, re.DOTALL)
+        if match:
+            codice_pulito = match.group(1).strip()
+        else:
+            codice_pulito = testo_risposta.replace("```python", "").replace("```", "").strip()
+            
+        print(f"\n[DEBUG LLM] Codice Plotly generato:\n{codice_pulito}\n")
+        
+        # Esegue il codice passando i path come stringhe nell'ambiente per farglieli usare
+        scatola_sicura = {
+            "csv_path": csv_path,
+            "json_path": json_path
+        }
+        
+        exec(codice_pulito, {}, scatola_sicura)
+        
+        if not os.path.exists(json_path):
+             return "Errore: Il codice è stato eseguito ma il file JSON del grafico non è stato creato sull'hard disk."
+             
+        # Agganciamo il segnale per avvisare Streamlit che c'è un nuovo file da disegnare
+        dati_visivi_temporanei = {
+             "tipo": "grafico_json",
+             "path": json_path
+        }
+        
+        return "Il grafico è stato generato e salvato correttamente in formato JSON. Avvisa l'utente che è visibile a schermo."
+        
+    except Exception as e:
+        return f"ERRORE DI ESECUZIONE PYTHON: {e}\n\n=== STOP TOOL ===\nORDINE PER L'AI: Il codice Plotly ha fallito. NON RITENTARE per evitare loop. Avvisa l'utente."
+
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
 def call_model(state: AgentState):
@@ -728,6 +806,9 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 
 9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati per Python":
 - Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente in modo che possa generare il codice corretto.
+
+10. IF l'utente chiede di creare un GRAFICO, un DIAGRAMMA o PLOTTARE i dati che sono appena stati estratti o filtrati nel CSV:
+- Usa il tool 'genera_grafico_avanzato' passando la frase intera dell'utente.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
@@ -827,7 +908,8 @@ tools = [cerca_catalogo_specifico,
          verifica_prevalenza_canali,
          consulta_dizionario_catalogo,
          prepara_dati_grafico,
-         estrai_dati_dinamici]
+         estrai_dati_dinamici,
+         genera_grafico_avanzato]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
