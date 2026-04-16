@@ -623,13 +623,15 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         Sei un programmatore Python esperto in analisi dati con Pandas.
         Il tuo compito è tradurre questa richiesta in codice: '{richiesta_utente}'
         
-        Hai a disposizione in memoria un dataframe Pandas chiamato 'df_catalogo'.
+        Hai a disposizione in memoria un dataframe Pandas chiamato ESATTAMENTE 'df_catalogo'. Non chiamarlo in altri modi.
         Per evitare errori 'KeyError', ecco la lista ESATTA delle colonne:
         {colonne_reali}
         
-        REGOLE:
-        1. Salva il risultato finale in una variabile chiamata esattamente 'df_risultato'.
-        2. Scrivi SOLO codice all'interno di un blocco ```python ... ```.
+        REGOLE FONDAMENTALI:
+        1. Usa SEMPRE il nome 'df_catalogo' per leggere i dati originali (NON usare 'df').
+        2. Rispetta ALLA LETTERA i valori chiesti dall'utente (es. se chiede 50, usa 50. Se chiede R32, cerca 'R32'). NON inventare numeri o gas diversi da quelli richiesti.
+        3. Salva il dataframe finale filtrato in una variabile chiamata ESATTAMENTE 'df_risultato'.
+        4. Scrivi SOLO codice all'interno di un blocco ```python ... ```, niente spiegazioni testuali.
         """
         
         # Usiamo l'LLM globale, senza instanziarlo di nuovo
