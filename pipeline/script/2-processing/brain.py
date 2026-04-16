@@ -601,6 +601,54 @@ def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "gra
     dati_visivi_temporanei = dati_per_grafico
 
     return "Analisi visiva pronta."
+
+@tool 
+def estrai_dati_dinamici(richiesta_utente: str) -> str:
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di filtrare dati o creare un dataframe per un grafico. 
+    Passa in 'richiesta_utente' la frase esatta dell'utente."""
+    try:
+        cartella_corrente = os.path.dirname(os.path.abspath(__file__))
+        cartella_script = os.path.dirname(cartella_corrente)
+        cartella_pipeline = os.path.dirname(cartella_script)
+        percorso_excel = os.path.join(cartella_pipeline, 'data', '1-preprocessing', 'catalogo.xlsx')
+        cartella_temp = os.path.join(cartella_pipeline, 'data', '1-preprocessing')
+        os.makedirs(cartella_temp, exist_ok=True)
+        path_salvataggio = os.path.join(cartella_temp, 'dataframe_grafico.csv')
+        df_caricato = pd.read_excel(percorso_excel)
+        colonne_reali = list(df_caricato.columns)
+        prompt = f"""
+        Sei un programmatore Python esperto in analisi dati con Pandas.
+        Il tuo compito è tradurre questa richiesta in codice: '{richiesta_utente}'
+        
+        Hai a disposizione in memoria un dataframe Pandas chiamato 'df_catalogo'.
+        Per evitare errori 'KeyError', ecco la lista ESATTA delle colonne disponibili nel dataframe:
+        {colonne_reali}
+        
+        REGOLE:
+        1. Salva il risultato finale in una variabile chiamata esattamente 'df_risultato'.
+        2. Scrivi SOLO ed ESCLUSIVAMENTE codice Python. 
+        3. Niente saluti, niente spiegazioni, niente formattazione markdown (```python).
+        """
+        llm = ChatOllama(model="qwen2.5:7b-instruct-q4_K_M", temperature=0)
+        risposta_llm = llm.invoke(prompt)
+        codice_python = risposta_llm.content
+        codice_pulito = codice_python.replace("```python", "").replace("```", "").strip()
+        print(f"\n[DEBUG LLM] Codice Pandas generato e in esecuzione:\n{codice_pulito}\n")
+    
+        scatola_sicura = {
+            "pd": pd,
+            "df_catalogo": df_caricato
+        }
+        exec(codice_pulito, {}, scatola_sicura)
+        df_finale = scatola_sicura.get("df_risultato")
+        if df_finale is None:
+            return "Errore: il codice generato non ha prodotto una variabile 'df_risultato'."
+        
+        df_finale.to_csv(path_salvataggio, index=False)
+        return f"Dati dinamici estratti e salvati in '{path_salvataggio}'."
+    except Exception as e:
+        return f"Si è verificato un errore durante l'estrazione dei dati dinamici: {e}"
+
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
 def call_model(state: AgentState):
@@ -763,7 +811,8 @@ tools = [cerca_catalogo_specifico,
          calcola_consumo_elettrico, 
          verifica_prevalenza_canali,
          consulta_dizionario_catalogo,
-         prepara_dati_grafico]
+         prepara_dati_grafico,
+         estrai_dati_dinamici]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
