@@ -672,7 +672,7 @@ REGOLE GLOBALI:
 - DIVIETO DI CALCOLO A VUOTO: Se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
 - DIVIETO DI JSON: È severamente vietato rispondere mostrando codice JSON grezzo all'utente.
 - DIVIETO CHIAMATE MULTIPLE: Ti è ASSOLUTAMENTE VIETATO chiamare due tool contemporaneamente. Scegli UN SOLO tool alla volta, attendi il risultato, e poi rispondi all'utente.
-- REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da QUALSIASI tool, ti è ASSOLUTAMENTE VIETATO richiamare lo stesso tool o chiamarne altri. Devi IMMEDIATAMENTE formulare la risposta discorsiva per l'utente e fermarti.""")
+- REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da QUALSIASI tool, ti è ASSOLUTAMENTE VIETATO richiamare lo stesso tool o chiamarne altri per fare verifiche extra. Devi IMMEDIATAMENTE formulare la risposta discorsiva per l'utente, basandoti sui dati estratti, e fermarti.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
@@ -693,7 +693,7 @@ REGOLE GLOBALI:
     try:
         # attiva il cronometro prima che l'llm inizi a pensare
         start_time = time.time()
-        result = app.invoke(current_state, {"recursion_limit": 3})
+        result = app.invoke(current_state, {"recursion_limit": 10})
         end_time = time.time()
         tempo_trascorso = end_time - start_time
         print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
@@ -784,6 +784,6 @@ def route_after_tool(state: AgentState) -> str:
 
 workflow.set_entry_point("agent")
 workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
-workflow.add_edge("tools", END)
+workflow.add_edge("tools", "agent")
 
 app = workflow.compile()
