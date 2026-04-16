@@ -618,18 +618,15 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         
         colonne_reali = list(df_catalogo.columns)
         prompt = f"""
-        Sei un programmatore Python esperto in analisi dati con Pandas.
-        Il tuo compito è tradurre questa richiesta in codice: '{richiesta_utente}'
+        Sei un programmatore Python. Scrivi uno script Pandas per soddisfare questa richiesta: '{richiesta_utente}'
         
-        Hai a disposizione in memoria un dataframe Pandas chiamato ESATTAMENTE 'df_catalogo'. Non chiamarlo in altri modi.
-        Per evitare errori 'KeyError', ecco la lista ESATTA delle colonne:
-        {colonne_reali}
+        Hai a disposizione il dataframe 'df_catalogo' (già caricato in memoria). 
+        Colonne disponibili (usa ESATTAMENTE questi nomi per evitare KeyError): {colonne_reali}
         
-        REGOLE FONDAMENTALI:
-        1. Usa SEMPRE il nome 'df_catalogo' per leggere i dati originali (NON usare 'df').
-        2. Rispetta ALLA LETTERA i valori chiesti dall'utente (es. se chiede 50, usa 50. Se chiede R32, cerca 'R32'). NON inventare numeri o gas diversi da quelli richiesti.
-        3. Salva il dataframe finale filtrato in una variabile chiamata ESATTAMENTE 'df_risultato'.
-        4. Scrivi SOLO codice all'interno di un blocco ```python ... ```, niente spiegazioni testuali.
+        REGOLE:
+        1. Filtra 'df_catalogo' e salva il risultato in una variabile chiamata ESATTAMENTE 'df_risultato'.
+        2. NON importare pandas, NON usare read_csv.
+        3. Restituisci SOLO il codice dentro i backtick ```python ... ```. Non aggiungere spiegazioni o commenti testuali.
         """
         
         # Usiamo l'LLM globale, senza instanziarlo di nuovo
@@ -660,7 +657,7 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         df_finale.to_csv(path_salvataggio, index=False)
         return f"Dati dinamici estratti ed elaborati con successo. Avvisa l'utente."
     except Exception as e:
-        return f"Si è verificato un errore di compilazione o logica durante l'estrazione: {e}"
+        return f"ERRORE DI ESECUZIONE PYTHON: {e}\n\n=== STOP TOOL ===\nORDINE PER L'AI: Il codice ha generato un errore. NON RITENTARE. Rispondi all'utente dicendo che non sei riuscito a generare il codice corretto per l'estrazione."
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
