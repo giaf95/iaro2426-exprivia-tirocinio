@@ -305,14 +305,18 @@ if user_query:
                 if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
                     
-                    # Gestione del nuovo tool grafico avanzato (JSON)
+                    # Gestione sicura del grafico avanzato (JSON)
                     if dati.get("tipo") == "grafico_json":
-                        try:
-                            with open(dati["path"], 'r', encoding='utf-8') as f:
-                                fig = pio.from_json(f.read())
-                            st.plotly_chart(fig, use_container_width=True)
-                        except Exception as e:
-                            st.error(f"Errore nel caricamento del grafico: {e}")
+                        percorso_file = dati.get("path")
+                        if percorso_file and os.path.exists(percorso_file):
+                            try:
+                                with open(percorso_file, 'r', encoding='utf-8') as f:
+                                    fig = pio.from_json(f.read())
+                                st.plotly_chart(fig, use_container_width=True)
+                            except Exception as e:
+                                st.error(f"Errore nel caricamento del grafico: {e}")
+                        else:
+                            st.info("Nota: Il file di questo grafico non è più disponibile sul disco.")
                     
                     # Vecchia logica per prepara_dati_grafico (Commentata)
                     # else:
