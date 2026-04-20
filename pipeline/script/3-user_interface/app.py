@@ -7,6 +7,7 @@ import fitz
 from PIL import Image
 import plotly.express as px
 import streamlit as st
+import plotly.io as pio
 
 # --- Importazione di brain ---
 cartella_corrente = os.path.dirname(os.path.abspath(__file__))
@@ -303,14 +304,23 @@ if user_query:
                 
                 if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
-                    df_visivo = pd.DataFrame(dati["dati"])
                     
-                    if dati["tipo"] == "grafico_barre":
-                        figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
-                        st.plotly_chart(figura, use_container_width=True)
-                    elif dati["tipo"] == "tabella":
-                        st.markdown(f"**Tabella: {dati['titolo']}**")
-                        st.dataframe(df_visivo, use_container_width=True, hide_index=True)
+                    if dati.get("tipo") == "grafico_json":
+                        try:
+                            with open(dati["path"], 'r', encoding='utf-8') as f:
+                                fig = pio.from_json(f.read())
+                            st.plotly_chart(fig, width="stretch")
+                        except Exception as e:
+                            st.error(f"Errore nel caricamento del grafico: {e}")
+                    else:
+                        # Vecchia logica per prepara_dati_grafico
+                        df_visivo = pd.DataFrame(dati["dati"])
+                        if dati["tipo"] == "grafico_barre":
+                            figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
+                            st.plotly_chart(figura, width="stretch")
+                        elif dati["tipo"] == "tabella":
+                            st.markdown(f"**Tabella: {dati['titolo']}**")
+                            st.dataframe(df_visivo, width="stretch", hide_index=True)
                 
                 cronologia_corrente.append({
                     "role": "assistant", 
