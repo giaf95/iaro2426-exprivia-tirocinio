@@ -662,13 +662,11 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
 
 @tool
 def genera_grafico_avanzato(richiesta_utente: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente ti chiede di disegnare o generare un grafico complesso basato sull'ultimo file CSV estratto.
-    Passa l'intera richiesta dell'utente nel parametro 'richiesta_utente'."""
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente ti chiede di disegnare o generare un grafico."""
     global llm, dati_visivi_temporanei
     print(f"\n[TOOL] Esecuzione GENERA_GRAFICO_AVANZATO -> Richiesta: '{richiesta_utente}'")
     
     try:
-        # Costruzione sicura dei percorsi con os.path
         script_dir = os.path.dirname(os.path.abspath(__file__))
         pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
         
@@ -678,36 +676,31 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
         json_path = os.path.join(cartella_ui, 'grafico_generato.json')
         
         if not os.path.exists(csv_path):
-            return "Errore: Il file 'dataframe_grafico.csv' non esiste. Dì all'utente che deve prima estrarre i dati."
+            return "Errore: CSV non trovato."
             
-        # Leggiamo le colonne dal CSV per dare contesto all'LLM e non fargliele inventare
+        # Cerco il dataframe per l'AI
         df_temp = pd.read_csv(csv_path)
         colonne = list(df_temp.columns)
         
         prompt = f"""
-        Sei un programmatore Python esperto in data visualization.
-        Il tuo compito è scrivere il codice per generare un grafico Plotly basato su questa richiesta: '{richiesta_utente}'
+        Sei un programmatore Python. Scrivi codice per un grafico Plotly in base a questa richiesta: '{richiesta_utente}'
         
-        Hai a disposizione due variabili testuali già pronte: 
-        - 'csv_path': il percorso del file CSV da leggere.
-        - 'json_path': il percorso dove salvare il grafico.
-        Hai anche le librerie 'pd' (pandas) e 'px' (plotly.express) GIA' INCLUSE E PRONTE. NON importarle.
+        Hai già a disposizione queste variabili pronte nell'ambiente (NON importarle e NON crearle):
+        - 'df': il dataframe Pandas già caricato coi dati pronti all'uso.
+        - 'px': la libreria plotly.express.
         
-        Ecco le colonne presenti nel CSV: {colonne}
+        Colonne di 'df': {colonne}
         
-        REGOLE:
-        1. Carica i dati in questo modo: df = pd.read_csv(csv_path)
-        2. Genera la figura con px e salvala in una variabile chiamata ESATTAMENTE 'fig'.
-        3. Salva la figura sul disco in questo modo esatto: fig.write_json(json_path)
-        4. DIVIETO ASSOLUTO: NON USARE fig.show().
-        5. Restituisci SOLO il codice dentro i backtick ```python ... ``` senza chiacchiere.
+        REGOLE VITALI:
+        1. Crea il grafico usando px (es. fig = px.pie(df, ...)).
+        2. NON caricare file CSV, 'df' è già pronto.
+        3. NON usare fig.show() e NON USARE write_json().
+        4. Scrivi SOLO il codice Python dentro i backtick.
         """
         
-        # Usiamo l'istanza globale di Qwen senza ricaricarlo in RAM
         risposta_llm = llm.invoke(prompt)
         testo_risposta = risposta_llm.content
         
-        # Estrazione sicura del codice
         match = re.search(r"```python\n(.*?)\n```", testo_risposta, re.DOTALL)
         if match:
             codice_pulito = match.group(1).strip()
@@ -716,29 +709,35 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
             
         print(f"\n[DEBUG LLM] Codice Plotly generato:\n{codice_pulito}\n")
         
-        # Esegue il codice passando i path come stringhe nell'ambiente per farglieli usare
+        # Scatola sicura pre-caricata con dati e librerie
         scatola_sicura = {
-            "csv_path": csv_path,
-            "json_path": json_path,
-            "pd": pd,
+            "df": df_temp,
             "px": px
         }
         
         exec(codice_pulito, {}, scatola_sicura)
         
-        if not os.path.exists(json_path):
-             return "Errore: Il codice è stato eseguito ma il file JSON del grafico non è stato creato sull'hard disk."
-             
-        # Agganciamo il segnale per avvisare Streamlit che c'è un nuovo file da disegnare
-        dati_visivi_temporanei = {
-             "tipo": "grafico_json",
-             "path": json_path
-        }
-        
-        return "Ho analizzato i dati e preparato il grafico. Eccolo qui sotto!"
-        
+        # SALVATAGGIO INTELLIGENTE: Peschiamo qualsiasi oggetto Plotly dalla scatola, 
+        # a prescindere da come l'AI l'abbia chiamato.
+        figura_salvata = False
+        for nome_var, valore_var in scatola_sicura.items():
+            # Controlla se la variabile è un grafico Plotly (hanno il metodo write_json)
+            if hasattr(valore_var, 'write_json'):
+                valore_var.write_json(json_path)
+                figura_salvata = True
+                break
+                
+        if figura_salvata:
+            dati_visivi_temporanei = {
+                 "tipo": "grafico_json",
+                 "path": json_path
+            }
+            return "Grafico generato e salvato. Rispondi all'utente dicendo: 'Ecco il grafico che mi hai chiesto:' e poi fermati."
+        else:
+            return "ERRORE: Il codice non ha prodotto nessun grafico. Chiedi scusa all'utente."
+            
     except Exception as e:
-        return f"ERRORE DI ESECUZIONE PYTHON: {e}\n\n=== STOP TOOL ===\nORDINE PER L'AI: Il codice Plotly ha fallito. NON RITENTARE per evitare loop. Avvisa l'utente."
+        return f"ERRORE DI ESECUZIONE: {e}. Devi rispondere ESATTAMENTE: 'Scusami, c'è stato un errore tecnico nel generare il grafico.' e FERMARTI."
 
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
