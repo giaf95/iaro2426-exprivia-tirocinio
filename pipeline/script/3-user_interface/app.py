@@ -340,22 +340,25 @@ if user_query:
                 if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
                     
+                    # --- NUOVA LOGICA: Rendering da JSON (Task attuale) ---
                     if dati.get("tipo") == "grafico_json":
                         try:
                             with open(dati["path"], 'r', encoding='utf-8') as f:
-                                fig = pio.from_json(f.read())
-                            st.plotly_chart(fig, width="stretch")
+                                json_puro = f.read()
+                                fig = pio.from_json(json_puro)
+                            st.plotly_chart(fig, use_container_width=True)
                         except Exception as e:
-                            st.error(f"Errore nel caricamento del grafico: {e}")
-                    else:
-                        # Vecchia logica per prepara_dati_grafico
-                        df_visivo = pd.DataFrame(dati["dati"])
-                        if dati["tipo"] == "grafico_barre":
-                            figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
-                            st.plotly_chart(figura, width="stretch")
-                        elif dati["tipo"] == "tabella":
-                            st.markdown(f"**Tabella: {dati['titolo']}**")
-                            st.dataframe(df_visivo, width="stretch", hide_index=True)
+                            st.error(f"Errore nel caricamento del file grafico JSON: {e}")
+                    
+                    # --- VECCHIA LOGICA: (Commentata per evitare interferenze) ---
+                    # else:
+                    #     df_visivo = pd.DataFrame(dati["dati"])
+                    #     if dati["tipo"] == "grafico_barre":
+                    #         figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
+                    #         st.plotly_chart(figura, use_container_width=True)
+                    #     elif dati["tipo"] == "tabella":
+                    #         st.markdown(f"**Tabella: {dati['titolo']}**")
+                    #         st.dataframe(df_visivo, use_container_width=True, hide_index=True)
                 
                 cronologia_corrente.append({
                     "role": "assistant", 
