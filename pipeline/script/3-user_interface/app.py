@@ -7,7 +7,7 @@ import fitz
 from PIL import Image
 import plotly.express as px
 import streamlit as st
-import streamlit.components.v1 as components
+import plotly.io as pio
 
 # --- Importazione di brain ---
 cartella_corrente = os.path.dirname(os.path.abspath(__file__))
@@ -339,47 +339,23 @@ if user_query:
                 if response.get("dati_visivi"):
                 if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
-                    df_visivo = pd.DataFrame(dati["dati"])
                     
-                    if dati["tipo"] == "grafico_barre":
-                        figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
-                        st.plotly_chart(figura, use_container_width=True)
-                    elif dati["tipo"] == "tabella":
-                        st.markdown(f"**Tabella: {dati['titolo']}**")
-                        st.dataframe(df_visivo, use_container_width=True, hide_index=True)
-                    
-                    # Lettura da file HTML
-                    if dati.get("tipo") == "grafico_html_file":
-                        percorso_file = dati.get("path")
-                        if percorso_file and os.path.exists(percorso_file):
-                            try:
-                                import streamlit.components.v1 as components
-                                with open(percorso_file, 'r', encoding='utf-8') as f:
-                                    html_data = f.read()
-                                components.html(html_data, height=500, scrolling=True)
-                            except Exception as e:
-                                st.error(f"Errore nel caricamento del file grafico: {e}")
-                        else:
-                            st.info("Nota: Il file di questo grafico non è più disponibile.")
-                    
-                    #Salvagente per i vecchi messaggi in cronologia
-                    elif dati.get("tipo") == "html_in_memory":
-                        codice = dati.get("codice_html")
-                        if codice:
-                            import streamlit.components.v1 as components
-                            components.html(codice, height=500, scrolling=True)
-                        else:
-                            st.info("Grafico precedente non disponibile (cronologia obsoleta).")
-                    
-                    # Vecchia logica per prepara_dati_grafico
-                    # else:
-                    #     df_visivo = pd.DataFrame(dati["dati"])
-                    #     if dati["tipo"] == "grafico_barre":
-                    #         figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
-                    #         st.plotly_chart(figura, use_container_width=True)
-                    #     elif dati["tipo"] == "tabella":
-                    #         st.markdown(f"**Tabella: {dati['titolo']}**")
-                    #         st.dataframe(df_visivo, use_container_width=True, hide_index=True)
+                    if dati.get("tipo") == "grafico_json":
+                        try:
+                            with open(dati["path"], 'r', encoding='utf-8') as f:
+                                fig = pio.from_json(f.read())
+                            st.plotly_chart(fig, width="stretch")
+                        except Exception as e:
+                            st.error(f"Errore nel caricamento del grafico: {e}")
+                    else:
+                        # Vecchia logica per prepara_dati_grafico
+                        df_visivo = pd.DataFrame(dati["dati"])
+                        if dati["tipo"] == "grafico_barre":
+                            figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
+                            st.plotly_chart(figura, width="stretch")
+                        elif dati["tipo"] == "tabella":
+                            st.markdown(f"**Tabella: {dati['titolo']}**")
+                            st.dataframe(df_visivo, width="stretch", hide_index=True)
                 
                 cronologia_corrente.append({
                     "role": "assistant", 
