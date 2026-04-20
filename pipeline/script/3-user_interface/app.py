@@ -340,17 +340,16 @@ if user_query:
                 if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
                     
-                    # --- NUOVA LOGICA: Rendering da JSON (Task attuale) ---
+                    # Gestione del nuovo tool grafico avanzato (JSON)
                     if dati.get("tipo") == "grafico_json":
                         try:
                             with open(dati["path"], 'r', encoding='utf-8') as f:
-                                json_puro = f.read()
-                                fig = pio.from_json(json_puro)
+                                fig = pio.from_json(f.read())
                             st.plotly_chart(fig, use_container_width=True)
                         except Exception as e:
-                            st.error(f"Errore nel caricamento del file grafico JSON: {e}")
+                            st.error(f"Errore nel caricamento del grafico: {e}")
                     
-                    # --- VECCHIA LOGICA: (Commentata per evitare interferenze) ---
+                    # Vecchia logica per prepara_dati_grafico (Commentata)
                     # else:
                     #     df_visivo = pd.DataFrame(dati["dati"])
                     #     if dati["tipo"] == "grafico_barre":
