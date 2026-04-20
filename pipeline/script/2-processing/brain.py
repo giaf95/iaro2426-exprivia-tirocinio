@@ -732,7 +732,7 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
              "path": json_path
         }
         
-        return "Il grafico è stato generato e salvato correttamente in formato JSON. Avvisa l'utente che è visibile a schermo."
+        return "ESECUZIONE COMPLETATA: Il grafico è stato generato e salvato in JSON. \n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: HAI FINITO. Ti è ASSOLUTAMENTE VIETATO chiamare di nuovo questo o altri tool. Formula immediatamente una breve risposta discorsiva per l'utente dicendo che il grafico è pronto a schermo, e poi fermati."
         
     except Exception as e:
         return f"ERRORE DI ESECUZIONE PYTHON: {e}\n\n=== STOP TOOL ===\nORDINE PER L'AI: Il codice Plotly ha fallito. NON RITENTARE per evitare loop. Avvisa l'utente."
@@ -896,15 +896,15 @@ except Exception:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [cerca_catalogo_specifico, 
-         cerca_catalogo_generico, 
-         cerca_sito_web, cerca_manuali, 
-         calcola_fabbisogno_termico, 
-         calcola_portata_aria, 
-         calcola_consumo_elettrico, 
-         verifica_prevalenza_canali,
-         consulta_dizionario_catalogo,
-         prepara_dati_grafico,
+tools = [#cerca_catalogo_specifico, 
+         #cerca_catalogo_generico, 
+         #cerca_sito_web, cerca_manuali, 
+         #calcola_fabbisogno_termico, 
+         #calcola_portata_aria, 
+         #calcola_consumo_elettrico, 
+         #verifica_prevalenza_canali,
+         #consulta_dizionario_catalogo,
+         #prepara_dati_grafico,
          estrai_dati_dinamici,
          genera_grafico_avanzato]
 
