@@ -732,7 +732,7 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
              "path": json_path
         }
         
-        return "ESECUZIONE COMPLETATA: Il grafico è stato generato e salvato in JSON. \n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: HAI FINITO. Ti è ASSOLUTAMENTE VIETATO chiamare di nuovo questo o altri tool. Formula immediatamente una breve risposta discorsiva per l'utente dicendo che il grafico è pronto a schermo, e poi fermati."
+        return "Ho analizzato i dati e preparato il grafico. Eccolo qui sotto!"
         
     except Exception as e:
         return f"ERRORE DI ESECUZIONE PYTHON: {e}\n\n=== STOP TOOL ===\nORDINE PER L'AI: Il codice Plotly ha fallito. NON RITENTARE per evitare loop. Avvisa l'utente."
@@ -919,8 +919,14 @@ workflow = StateGraph(AgentState)
 workflow.add_node("agent", call_model)
 workflow.add_node("tools", tool_node)
 
+def route_after_tool(state: AgentState) -> str:
+    global dati_visivi_temporanei
+    if dati_visivi_temporanei is not None:
+        return "end"
+    return "agent"
+
 workflow.set_entry_point("agent")
 workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
-workflow.add_edge("tools", "agent")
+workflow.add_conditional_edges("tools", route_after_tool, {"agent": "agent", "end": END})
 
 app = workflow.compile()
