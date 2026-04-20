@@ -689,19 +689,19 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
         Sei un programmatore Python esperto in data visualization.
         Il tuo compito è scrivere il codice per generare un grafico Plotly basato su questa richiesta: '{richiesta_utente}'
         
-        Hai a disposizione due variabili testuali già pronte nel tuo ambiente: 
+        Hai a disposizione due variabili testuali già pronte: 
         - 'csv_path': il percorso del file CSV da leggere.
-        - 'json_path': il percorso dove salvare il grafico generato.
+        - 'json_path': il percorso dove salvare il grafico.
+        Hai anche le librerie 'pd' (pandas) e 'px' (plotly.express) GIA' INCLUSE E PRONTE. NON importarle.
         
-        Ecco le colonne presenti nel CSV (usa ESATTAMENTE questi nomi): {colonne}
+        Ecco le colonne presenti nel CSV: {colonne}
         
         REGOLE:
-        1. Importa le librerie necessarie (import pandas as pd, import plotly.express as px).
-        2. Carica i dati in questo modo: df = pd.read_csv(csv_path)
-        3. Genera la figura con plotly.express e salvala in una variabile chiamata 'fig'.
-        4. Salva la figura sul disco in questo modo esatto: fig.write_json(json_path)
-        5. DIVIETO ASSOLUTO: NON USARE fig.show(). Farebbe crashare il sistema.
-        6. Restituisci SOLO il codice dentro i backtick ```python ... ``` senza commenti testuali.
+        1. Carica i dati in questo modo: df = pd.read_csv(csv_path)
+        2. Genera la figura con px e salvala in una variabile chiamata ESATTAMENTE 'fig'.
+        3. Salva la figura sul disco in questo modo esatto: fig.write_json(json_path)
+        4. DIVIETO ASSOLUTO: NON USARE fig.show().
+        5. Restituisci SOLO il codice dentro i backtick ```python ... ``` senza chiacchiere.
         """
         
         # Usiamo l'istanza globale di Qwen senza ricaricarlo in RAM
@@ -720,7 +720,9 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
         # Esegue il codice passando i path come stringhe nell'ambiente per farglieli usare
         scatola_sicura = {
             "csv_path": csv_path,
-            "json_path": json_path
+            "json_path": json_path,
+            "pd": pd,
+            "px": px
         }
         
         exec(codice_pulito, {}, scatola_sicura)
