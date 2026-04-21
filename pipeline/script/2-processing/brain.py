@@ -679,8 +679,12 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
         if not os.path.exists(csv_path):
             return "Errore: CSV non trovato."
             
-        # Cerco il dataframe per l'AI
+        # Carichiamo noi il dataframe per l'AI
         df_temp = pd.read_csv(csv_path)
+        
+        #pulisce gli spazi /xa0
+        df_temp.columns = df_temp.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
+        
         colonne = list(df_temp.columns)
         
         prompt = f"""
