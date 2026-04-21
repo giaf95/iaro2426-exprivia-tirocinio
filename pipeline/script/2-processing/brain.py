@@ -690,13 +690,14 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
         - 'df': il dataframe Pandas già caricato coi dati pronti all'uso.
         - 'px': la libreria plotly.express.
         
-        Colonne di 'df': {colonne}
+        Colonne ESATTE di 'df' (COPIALE IN MODO IDENTICO, non rimuovere i numeri iniziali!): {colonne}
         
         REGOLE VITALI:
         1. Crea il grafico usando px (es. fig = px.pie(df, ...)).
-        2. NON caricare file CSV, 'df' è già pronto.
-        3. NON usare fig.show() e NON USARE write_json().
-        4. Scrivi SOLO il codice Python dentro i backtick.
+        2. Usa ESATTAMENTE i nomi delle colonne forniti sopra. Se una colonna inizia con un numero (es. '1 Prevalenza...'), DEVI includere il numero e lo spazio nel nome della variabile.
+        3. NON caricare file CSV, 'df' è già pronto.
+        4. NON usare fig.show() e NON USARE write_json().
+        5. Scrivi SOLO il codice Python dentro i backtick.
         """
         
         risposta_llm = llm.invoke(prompt)
