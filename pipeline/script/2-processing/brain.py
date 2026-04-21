@@ -694,12 +694,19 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
         exec(codice_pulito, {}, scatola_sicura)
         
         if 'fig' in scatola_sicura:
-            # Trasformiamo il grafico in HTML direttamente in memoria
-            html_string = scatola_sicura['fig'].to_html(full_html=False, include_plotlyjs='cdn')
-            dati_visivi_temporanei = {"tipo": "html_in_memory", "codice_html": html_string}
+            cartella_grafici = os.path.join(pipeline_dir, 'data', '3-user_interface', 'grafici_salvati')
+            os.makedirs(cartella_grafici, exist_ok=True)
             
-            # RITORNO PULITO: Non passiamo all'IA nessun percorso cartella
-            return "SUCCESSO: Il grafico è stato generato correttamente in memoria."
+            # Genera un nome file unico usando il timestamp
+            nome_file = f"grafico_{int(time.time())}.html"
+            html_path = os.path.join(cartella_grafici, nome_file)
+            
+            # Salvataggio dell'HTML su disco
+            scatola_sicura['fig'].write_html(html_path, full_html=False, include_plotlyjs='cdn')
+            
+            dati_visivi_temporanei = {"tipo": "grafico_html_file", "path": html_path}
+            
+            return "SUCCESSO: Il grafico è stato generato e salvato."
         
         return "ERRORE: Il codice non ha prodotto la variabile 'fig'."
             
