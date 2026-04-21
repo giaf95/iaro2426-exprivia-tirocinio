@@ -663,88 +663,43 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
 
 @tool
 def genera_grafico_avanzato(richiesta_utente: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente ti chiede di disegnare o generare un grafico."""
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente ti chiede un grafico."""
     global llm, dati_visivi_temporanei
-    print(f"\n[TOOL] Esecuzione GENERA_GRAFICO_AVANZATO -> Richiesta: '{richiesta_utente}'")
     
     try:
+        # 1. Carica il CSV del collega
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
-        
-        csv_path = os.path.join(pipeline_dir, 'data', '1-preprocessing', 'dataframe_grafico.csv')
-        cartella_ui = os.path.join(pipeline_dir, 'data', '3-user_interface')
-        os.makedirs(cartella_ui, exist_ok=True)
-        json_path = os.path.join(cartella_ui, 'grafico_generato.json')
-        
-        if not os.path.exists(csv_path):
-            return "Errore: CSV non trovato."
-            
-        # Carichiamo noi il dataframe per l'AI
+        csv_path = os.path.join(os.path.dirname(script_dir), 'data', '1-preprocessing', 'dataframe_grafico.csv')
         df_temp = pd.read_csv(csv_path)
-        
-        #pulisce gli spazi /xa0
-        df_temp.columns = df_temp.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
-        
+        df_temp.columns = df_temp.columns.str.replace(r'\s+', ' ', regex=True).str.strip() # Pulizia colonne
         colonne = list(df_temp.columns)
         
+        # 2. Prompt minimale
         prompt = f"""
-        Sei un programmatore Python. Scrivi codice per un grafico Plotly in base a questa richiesta: '{richiesta_utente}'
-        
-        Hai già a disposizione queste variabili pronte nell'ambiente (NON importarle e NON crearle):
-        - 'df': il dataframe Pandas già caricato coi dati pronti all'uso.
-        - 'px': la libreria plotly.express.
-        
-        Colonne ESATTE di 'df' (COPIALE IN MODO IDENTICO, non rimuovere i numeri iniziali!): {colonne}
-        
-        REGOLE VITALI:
-        1. Crea il grafico usando px (es. fig = px.pie(df, ...)).
-        2. Usa ESATTAMENTE i nomi delle colonne forniti sopra. Se una colonna inizia con un numero (es. '1 Prevalenza...'), DEVI includere il numero e lo spazio nel nome della variabile.
-        3. NON caricare file CSV, 'df' è già pronto.
-        4. NON usare fig.show() e NON USARE write_json().
-        5. Scrivi SOLO il codice Python dentro i backtick.
+        Sei un programmatore. Scrivi codice per un grafico Plotly basato su: '{richiesta_utente}'
+        Hai a disposizione 'df' (il dataframe) e 'px' (plotly.express). Colonne: {colonne}
+        REGOLA: Crea il grafico e salvalo in una variabile chiamata esattamente 'fig'. NON usare fig.show(). Scrivi solo il codice.
         """
         
         risposta_llm = llm.invoke(prompt)
-        testo_risposta = risposta_llm.content
+        match = re.search(r"```python\n(.*?)\n```", risposta_llm.content, re.DOTALL)
+        codice = match.group(1).strip() if match else risposta_llm.content.replace("```python", "").replace("```", "").strip()
         
-        match = re.search(r"```python\n(.*?)\n```", testo_risposta, re.DOTALL)
-        if match:
-            codice_pulito = match.group(1).strip()
+        # 3. Esecuzione sicura in RAM
+        scatola_sicura = {"df": df_temp, "px": px}
+        exec(codice, {}, scatola_sicura)
+        
+        # 4. LA VERA MAGIA: Conversione in-memory in HTML
+        if 'fig' in scatola_sicura:
+            html_string = scatola_sicura['fig'].to_html(full_html=False, include_plotlyjs='cdn')
+            dati_visivi_temporanei = {"tipo": "html_in_memory", "codice_html": html_string}
+            return "Grafico pronto. Dì all'utente: 'Ecco il grafico!'"
         else:
-            codice_pulito = testo_risposta.replace("```python", "").replace("```", "").strip()
-            
-        print(f"\n[DEBUG LLM] Codice Plotly generato:\n{codice_pulito}\n")
-        
-        # Scatola sicura pre-caricata con dati e librerie
-        scatola_sicura = {
-            "df": df_temp,
-            "px": px
-        }
-        
-        exec(codice_pulito, {}, scatola_sicura)
-        
-        # SALVATAGGIO INTELLIGENTE: Peschiamo qualsiasi oggetto Plotly dalla scatola, 
-        # a prescindere da come l'AI l'abbia chiamato.
-        figura_salvata = False
-        for nome_var, valore_var in scatola_sicura.items():
-            # Controlla se la variabile è un grafico Plotly (hanno il metodo write_json)
-            if hasattr(valore_var, 'write_json'):
-                valore_var.write_json(json_path)
-                figura_salvata = True
-                break
-                
-        if figura_salvata:
-            dati_visivi_temporanei = {
-                 "tipo": "grafico_json",
-                 "path": json_path
-            }
-            return "Grafico generato e salvato. Rispondi all'utente dicendo: 'Ecco il grafico che mi hai chiesto:' e poi fermati."
-        else:
-            return "ERRORE: Il codice non ha prodotto nessun grafico. Chiedi scusa all'utente."
+            return "Errore: La variabile 'fig' non è stata generata."
             
     except Exception as e:
-        return f"ERRORE DI ESECUZIONE: {e}. Devi rispondere ESATTAMENTE: 'Scusami, c'è stato un errore tecnico nel generare il grafico.' e FERMARTI."
-
+        return f"Errore Python: {e}. Chiedi scusa all'utente."
+    
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
 def call_model(state: AgentState):
