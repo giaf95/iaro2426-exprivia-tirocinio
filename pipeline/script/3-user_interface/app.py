@@ -299,17 +299,29 @@ if user_query:
                 response = elabora_richiesta(user_query, chat_id=id_chat_corrente)
                 
                 st.write(response["testo"])
-                if response["azioni"]:
-                    st.info(f"Il motore ha consultato i tool: {', '.join(response['azioni'])}")
-                
                 if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
                     
-                    if dati.get("tipo") == "html_in_memory":
-                        # Disegna l'HTML direttamente dalla RAM, zero file!
+                    # Lettura da file HTML
+                    if dati.get("tipo") == "grafico_html_file":
+                        percorso_file = dati.get("path")
+                        if percorso_file and os.path.exists(percorso_file):
+                            try:
+                                import streamlit.components.v1 as components
+                                with open(percorso_file, 'r', encoding='utf-8') as f:
+                                    html_data = f.read()
+                                components.html(html_data, height=500, scrolling=True)
+                            except Exception as e:
+                                st.error(f"Errore nel caricamento del file grafico: {e}")
+                        else:
+                            st.info("Nota: Il file di questo grafico non è più disponibile.")
+                    
+                    # Salvagente per i vecchi messaggi in cronologia
+                    elif dati.get("tipo") == "html_in_memory" and "codice_html" in dati:
+                        import streamlit.components.v1 as components
                         components.html(dati["codice_html"], height=500, scrolling=True)
                     
-                    # Vecchia logica per prepara_dati_grafico (Commentata)
+                    # Vecchia logica per prepara_dati_grafico
                     # else:
                     #     df_visivo = pd.DataFrame(dati["dati"])
                     #     if dati["tipo"] == "grafico_barre":
