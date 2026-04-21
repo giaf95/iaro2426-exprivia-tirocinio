@@ -662,42 +662,48 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
 
 @tool
 def genera_grafico_avanzato(richiesta_utente: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente ti chiede un grafico."""
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente ti chiede di generare un grafico."""
     global llm, dati_visivi_temporanei
     
     try:
-        # 1. Carica il CSV del collega
+        # Caricamento del CSV (Task: caricare dal path fissato)
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        csv_path = os.path.join(os.path.dirname(script_dir), 'data', '1-preprocessing', 'dataframe_grafico.csv')
+        pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
+        csv_path = os.path.join(pipeline_dir, 'data', '1-preprocessing', 'dataframe_grafico.csv')
+        
+        if not os.path.exists(csv_path):
+            return "ERRORE: File dati non trovato. Estrai prima i dati."
+
         df_temp = pd.read_csv(csv_path)
-        df_temp.columns = df_temp.columns.str.replace(r'\s+', ' ', regex=True).str.strip() # Pulizia colonne
+        df_temp.columns = df_temp.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
         colonne = list(df_temp.columns)
         
-        # 2. Prompt minimale
         prompt = f"""
-        Sei un programmatore. Scrivi codice per un grafico Plotly basato su: '{richiesta_utente}'
-        Hai a disposizione 'df' (il dataframe) e 'px' (plotly.express). Colonne: {colonne}
-        REGOLA: Crea il grafico e salvalo in una variabile chiamata esattamente 'fig'. NON usare fig.show(). Scrivi solo il codice.
+        Scrivi SOLO codice Python per un grafico Plotly. Richiesta: '{richiesta_utente}'
+        Usa 'df' (dataframe pronto) e 'px' (plotly.express). Colonne: {colonne}
+        REGOLA: Crea il grafico e assegnalo alla variabile 'fig'. NON usare fig.show() o salvataggi su disco.
         """
         
         risposta_llm = llm.invoke(prompt)
-        match = re.search(r"```python\n(.*?)\n```", risposta_llm.content, re.DOTALL)
-        codice = match.group(1).strip() if match else risposta_llm.content.replace("```python", "").replace("```", "").strip()
+        codice = re.search(r"```python\n(.*?)\n```", risposta_llm.content, re.DOTALL)
+        codice_pulito = codice.group(1).strip() if codice else risposta_llm.content.strip()
         
-        # 3. Esecuzione sicura in RAM
+        # Esecuzione in RAM
         scatola_sicura = {"df": df_temp, "px": px}
-        exec(codice, {}, scatola_sicura)
+        exec(codice_pulito, {}, scatola_sicura)
         
-        # 4. LA VERA MAGIA: Conversione in-memory in HTML
         if 'fig' in scatola_sicura:
+            # Trasformiamo il grafico in HTML direttamente in memoria
             html_string = scatola_sicura['fig'].to_html(full_html=False, include_plotlyjs='cdn')
             dati_visivi_temporanei = {"tipo": "html_in_memory", "codice_html": html_string}
-            return "Grafico pronto. Dì all'utente: 'Ecco il grafico!'"
-        else:
-            return "Errore: La variabile 'fig' non è stata generata."
+            
+            # RITORNO PULITO: Non passiamo all'IA nessun percorso cartella
+            return "SUCCESSO: Il grafico è stato generato correttamente in memoria."
+        
+        return "ERRORE: Il codice non ha prodotto la variabile 'fig'."
             
     except Exception as e:
-        return f"Errore Python: {e}. Chiedi scusa all'utente."
+        return f"ERRORE TECNICO: {e}"
     
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
@@ -775,7 +781,8 @@ REGOLE GLOBALI:
 - DIVIETO DI CALCOLO A VUOTO: Se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
 - DIVIETO DI JSON: È severamente vietato rispondere mostrando codice JSON grezzo all'utente.
 - DIVIETO CHIAMATE MULTIPLE: Ti è ASSOLUTAMENTE VIETATO chiamare due tool contemporaneamente. Scegli UN SOLO tool alla volta, attendi il risultato, e poi rispondi all'utente.
-- REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da QUALSIASI tool, ti è ASSOLUTAMENTE VIETATO richiamare lo stesso tool o chiamarne altri per fare verifiche extra. Devi IMMEDIATAMENTE formulare la risposta discorsiva per l'utente, basandoti sui dati estratti, e fermarti.""")
+- REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da QUALSIASI tool, ti è ASSOLUTAMENTE VIETATO richiamare lo stesso tool o chiamarne altri per fare verifiche extra. Devi IMMEDIATAMENTE formulare la risposta discorsiva per l'utente, basandoti sui dati estratti, e fermarti.
+- REGOLA DI PRIVACY: Ti è ASSOLUTAMENTE VIETATO menzionare nomi di cartelle, percorsi di file o dettagli del sistema operativo (es. "tirocinio", "exprivia", "C:/Users...") nelle tue risposte. Limitati esclusivamente ai dati tecnici del catalogo.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
