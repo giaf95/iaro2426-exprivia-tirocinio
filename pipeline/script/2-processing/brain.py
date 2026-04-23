@@ -859,11 +859,11 @@ REGOLE GLOBALI:
 
     tool_usati = []
     for msg in nuovi_messaggi:
-    for msg in nuovi_messaggi:
-        if hasattr(msg, 'tool_calls') and msg.tool_calls:
-            for tool in msg.tool_calls:
-                if tool['name'] not in tool_usati:
-                    tool_usati.append(tool['name'])
+        for msg in nuovi_messaggi:
+            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                for tool in msg.tool_calls:
+                    if tool['name'] not in tool_usati:
+                        tool_usati.append(tool['name'])
 
     global dati_visivi_temporanei
     dati_da_esportare = dati_visivi_temporanei
