@@ -604,7 +604,7 @@ def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "gra
 
 @tool 
 def estrai_dati_dinamici(richiesta_utente: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di elaborare i dati in modo complesso, estrarre file o creare nuovi dataframe personalizzati."""
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di elaborare i dati in modo complesso o estrarre file personalizzati dal catalogo."""
     global df_catalogo, llm
     print(f"\n[TOOL] Esecuzione ESTRAI_DATI_DINAMICI -> Richiesta: '{richiesta_utente}'")
     
@@ -612,113 +612,98 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
          return "Errore: database catalogo non caricato in memoria."
          
     try:
-        # Configurazione percorsi di output
-        cartella_corrente = os.path.dirname(os.path.abspath(__file__))
-        cartella_pipeline = os.path.dirname(os.path.dirname(cartella_corrente))
-        cartella_temp = os.path.join(cartella_pipeline, 'data', '1-preprocessing')
-        os.makedirs(cartella_temp, exist_ok=True)
-        path_salvataggio = os.path.join(cartella_temp, 'dataframe_grafico.csv')
+        # Percorso di output richiesto: data/3-user_interface
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
+        cartella_destinazione = os.path.join(pipeline_dir, 'data', '3-user_interface')
+        os.makedirs(cartella_destinazione, exist_ok=True)
+        path_salvataggio = os.path.join(cartella_destinazione, 'dataframe_grafico.csv')
         
-        # Pulizia preventiva degli spazi nei nomi delle colonne
         df_lavoro = df_catalogo.copy()
         df_lavoro.columns = df_lavoro.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
         colonne_reali = list(df_lavoro.columns)
         
         prompt = f"""
-        Sei un programmatore Python. Scrivi codice Pandas per questa richiesta: '{richiesta_utente}'
+        Sei un programmatore Python esperto in Pandas. Scrivi codice per questa richiesta: '{richiesta_utente}'
         
-        Hai a disposizione il dataframe 'df'. 
-        Colonne disponibili: {colonne_reali}
+        Dataframe disponibile: 'df'
+        Colonne: {colonne_reali}
         
-        REGOLE VITALI:
-        1. Salva il risultato ESATTAMENTE nella variabile 'df_risultato'.
-        2. DEVI usare ESATTAMENTE i numeri e i valori scritti nella richiesta dell'utente. Se chiede maggiore di 900, DEVI scrivere > 900. NON inventare numeri.
-        3. NON importare librerie (niente import pandas). NON usare to_csv().
-        4. Scrivi SOLO il codice dentro i backtick ```python ... ```.
+        REGOLE:
+        1. Salva il risultato filtrato nella variabile 'df_risultato'.
+        2. Usa i valori numerici esatti indicati dall'utente.
+        3. Scrivi solo il codice tra i backtick ```python ... ```.
         """
         
         risposta_llm = llm.invoke(prompt)
-        testo_risposta = risposta_llm.content
-        
-        # Estrazione sicura del codice generato
-        match = re.search(r"```python\n(.*?)\n```", testo_risposta, re.DOTALL)
-        codice_pulito = match.group(1).strip() if match else testo_risposta.replace("```python", "").replace("```", "").strip()
+        match = re.search(r"```python\n(.*?)\n```", risposta_llm.content, re.DOTALL)
+        codice_pulito = match.group(1).strip() if match else risposta_llm.content.strip()
             
         print(f"\n[DEBUG LLM] Codice Pandas generato:\n{codice_pulito}\n")
     
-        # Iniezione variabili nell'ambiente isolato
-        scatola_sicura = {
-            "pd": pd,
-            "df": df_lavoro,
-            "df_risultato": None
-        }
-        
+        scatola_sicura = {"pd": pd, "df": df_lavoro, "df_risultato": None}
         exec(codice_pulito, {}, scatola_sicura)
         df_finale = scatola_sicura.get("df_risultato")
         
-        if df_finale is None or not isinstance(df_finale, pd.DataFrame):
-            return "ERRORE: il codice non ha prodotto un dataframe valido nella variabile 'df_risultato'."
+        if df_finale is not None and isinstance(df_finale, pd.DataFrame):
+            # Salvataggio fisico nel path dell'interfaccia utente
+            df_finale.to_csv(path_salvataggio, index=False)
+            return "SUCCESSO: Dati estratti e salvati in data/3-user_interface/dataframe_grafico.csv"
         
-        # Salvataggio fisico del CSV
-        df_finale.to_csv(path_salvataggio, index=False)
-        return "SUCCESSO: I dati sono stati estratti e il file CSV è stato creato correttamente."
+        return "ERRORE: Generazione dataframe fallita."
         
     except PermissionError:
-        return "ERRORE CRITICO: Il file CSV è aperto in un altro programma (es. Excel). Dì all'utente di CHIUDERE IL FILE e riprovare la richiesta."
+        return "ERRORE: Chiudi il file CSV se è aperto in Excel e riprova."
     except Exception as e:
-        return f"ERRORE DI ESECUZIONE PYTHON: {e}"
+        return f"ERRORE: {e}"
 
 @tool
 def genera_grafico_avanzato(richiesta_utente: str) -> str:
     """Usa questo tool ESCLUSIVAMENTE quando l'utente ti chiede di generare un grafico."""
     global llm, dati_visivi_temporanei
+    print(f"\n[TOOL] Esecuzione GENERA_GRAFICO_AVANZATO -> Richiesta: '{richiesta_utente}'")
     
     try:
-        # Caricamento del CSV (Task: caricare dal path fissato)
         script_dir = os.path.dirname(os.path.abspath(__file__))
         pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
-        csv_path = os.path.join(pipeline_dir, 'data', '1-preprocessing', 'dataframe_grafico.csv')
+        # Legge dal path dove estrai_dati_dinamici ha salvato il file
+        csv_path = os.path.join(pipeline_dir, 'data', '3-user_interface', 'dataframe_grafico.csv')
         
         if not os.path.exists(csv_path):
-            return "ERRORE: File dati non trovato. Estrai prima i dati."
+            return "ERRORE: File dataframe_grafico.csv non trovato in data/3-user_interface."
 
         df_temp = pd.read_csv(csv_path)
         df_temp.columns = df_temp.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
         colonne = list(df_temp.columns)
         
         prompt = f"""
-        Scrivi SOLO codice Python per un grafico Plotly. Richiesta: '{richiesta_utente}'
-        Usa 'df' (dataframe pronto) e 'px' (plotly.express). Colonne: {colonne}
-        REGOLA: Crea il grafico e assegnalo alla variabile 'fig'. NON usare fig.show() o salvataggi su disco.
+        Scrivi codice Plotly per: '{richiesta_utente}'
+        Usa 'df' e 'px'. Colonne: {colonne}
+        REGOLA: Salva il grafico in 'fig'. Non usare fig.show().
         """
         
         risposta_llm = llm.invoke(prompt)
         codice = re.search(r"```python\n(.*?)\n```", risposta_llm.content, re.DOTALL)
         codice_pulito = codice.group(1).strip() if codice else risposta_llm.content.strip()
         
-        # Esecuzione in RAM
         scatola_sicura = {"df": df_temp, "px": px}
         exec(codice_pulito, {}, scatola_sicura)
         
         if 'fig' in scatola_sicura:
             cartella_grafici = os.path.join(pipeline_dir, 'data', '3-user_interface', 'grafici_salvati')
             os.makedirs(cartella_grafici, exist_ok=True)
-            
-            # Genera un nome file unico usando il timestamp
             nome_file = f"grafico_{int(time.time())}.html"
             html_path = os.path.join(cartella_grafici, nome_file)
             
-            # Salvataggio dell'HTML su disco
             scatola_sicura['fig'].write_html(html_path, full_html=False, include_plotlyjs='cdn')
-            
             dati_visivi_temporanei = {"tipo": "grafico_html_file", "path": html_path}
             
-            return "SUCCESSO: Il grafico è stato generato e salvato."
+            return "SUCCESSO: Grafico generato correttamente."
         
-        return "ERRORE: Il codice non ha prodotto la variabile 'fig'."
+        return "ERRORE: Variabile 'fig' non trovata."
             
     except Exception as e:
-        return f"ERRORE TECNICO: {e}"
+        return f"ERRORE: {e}"
     
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
