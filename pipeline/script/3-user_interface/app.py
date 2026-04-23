@@ -235,14 +235,39 @@ for msg in cronologia_corrente:
         
         if msg.get("dati_visivi"):
             dati = msg["dati_visivi"]
-            df_visivo = pd.DataFrame(dati["dati"])
             
-            if dati["tipo"] == "grafico_barre":
-                figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
-                st.plotly_chart(figura, use_container_width=True)
-            elif dati["tipo"] == "tabella":
-                st.markdown(f"**Tabella: {dati['titolo']}**")
-                st.dataframe(df_visivo, use_container_width=True, hide_index=True)
+            # 1. Nuovi grafici salvati su file HTML
+            if dati.get("tipo") == "grafico_html_file":
+                percorso_file = dati.get("path")
+                if percorso_file and os.path.exists(percorso_file):
+                    try:
+                        import streamlit.components.v1 as components
+                        with open(percorso_file, 'r', encoding='utf-8') as f:
+                            html_data = f.read()
+                        components.html(html_data, height=500, scrolling=True)
+                    except Exception as e:
+                        st.error(f"Errore nel caricamento del file grafico: {e}")
+                else:
+                    st.info("Nota: Il file di questo grafico non è più disponibile.")
+                    
+            # 2. Salvagente per i primissimi test in RAM
+            elif dati.get("tipo") == "html_in_memory":
+                codice = dati.get("codice_html")
+                if codice:
+                    import streamlit.components.v1 as components
+                    components.html(codice, height=500, scrolling=True)
+                else:
+                    st.info("⚠️ Grafico precedente non disponibile (cronologia obsoleta).")
+            
+            # 3. Vecchia logica per prepara_dati_grafico (Commentata)
+            # elif "dati" in dati:
+            #     df_visivo = pd.DataFrame(dati["dati"])
+            #     if dati["tipo"] == "grafico_barre":
+            #         figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati.get("titolo", ""))
+            #         st.plotly_chart(figura, use_container_width=True)
+            #     elif dati["tipo"] == "tabella":
+            #         st.markdown(f"**Tabella: {dati.get('titolo', '')}**")
+            #         st.dataframe(df_visivo, use_container_width=True, hide_index=True)
 
 #------------------- TEST ----------------------------------------------
 #storico_chat_finto = [
@@ -316,10 +341,14 @@ if user_query:
                         else:
                             st.info("Nota: Il file di questo grafico non è più disponibile.")
                     
-                    # Salvagente per i vecchi messaggi in cronologia
-                    elif dati.get("tipo") == "html_in_memory" and "codice_html" in dati:
-                        import streamlit.components.v1 as components
-                        components.html(dati["codice_html"], height=500, scrolling=True)
+                    #Salvagente per i vecchi messaggi in cronologia
+                    elif dati.get("tipo") == "html_in_memory":
+                        codice = dati.get("codice_html")
+                        if codice:
+                            import streamlit.components.v1 as components
+                            components.html(codice, height=500, scrolling=True)
+                        else:
+                            st.info("Grafico precedente non disponibile (cronologia obsoleta).")
                     
                     # Vecchia logica per prepara_dati_grafico
                     # else:
