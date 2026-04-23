@@ -8,6 +8,7 @@ from PIL import Image
 import plotly.express as px
 import streamlit as st
 import streamlit.components.v1 as components
+import streamlit.components.v1 as components
 
 # --- Importazione di brain ---
 cartella_corrente = os.path.dirname(os.path.abspath(__file__))
@@ -231,19 +232,83 @@ for msg in cronologia_corrente:
    with st.chat_message(msg["role"]):
         st.write(msg["content"])
         if "azioni" in msg and msg["azioni"]:
-         st.caption(f" Azioni compiute: {', '.join(msg['azioni'])}")
+            st.caption(f" Azioni compiute: {', '.join(msg['azioni'])}")
+        
         if msg.get("dati_visivi"):
         if msg.get("dati_visivi"):
             dati = msg["dati_visivi"]
-            tipo = dati.get("tipo")
-            df_visivo = pd.DataFrame(dati["dati"])
-            if tipo == "tabella":
-                st.markdown(f"**Tabella: {dati['titolo']}**")
-                st.dataframe(df_visivo, use_container_width=True, hide_index=True) 
-            elif tipo == "grafico_barre":
-                titolo = dati["titolo"]
-                figura = px.bar(df_visivo, x="Modello", y= "Valore",title= f"{titolo}")
-                st.plotly_chart(figura, use_container_width=True)
+            
+            # 1. Nuovi grafici salvati su file HTML
+            if dati.get("tipo") == "grafico_html_file":
+                percorso_file = dati.get("path")
+                if percorso_file and os.path.exists(percorso_file):
+                    try:
+                        import streamlit.components.v1 as components
+                        with open(percorso_file, 'r', encoding='utf-8') as f:
+                            html_data = f.read()
+                        components.html(html_data, height=500, scrolling=True)
+                    except Exception as e:
+                        st.error(f"Errore nel caricamento del file grafico: {e}")
+                else:
+                    st.info("Nota: Il file di questo grafico non è più disponibile.")
+                    
+            # 2. Salvagente per i primissimi test in RAM
+            elif dati.get("tipo") == "html_in_memory":
+                codice = dati.get("codice_html")
+                if codice:
+                    import streamlit.components.v1 as components
+                    components.html(codice, height=500, scrolling=True)
+                else:
+                    st.info("⚠️ Grafico precedente non disponibile (cronologia obsoleta).")
+            
+            # 3. Vecchia logica per prepara_dati_grafico (Commentata)
+            # elif "dati" in dati:
+            #     df_visivo = pd.DataFrame(dati["dati"])
+            #     if dati["tipo"] == "grafico_barre":
+            #         figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati.get("titolo", ""))
+            #         st.plotly_chart(figura, use_container_width=True)
+            #     elif dati["tipo"] == "tabella":
+            #         st.markdown(f"**Tabella: {dati.get('titolo', '')}**")
+            #         st.dataframe(df_visivo, use_container_width=True, hide_index=True)
+
+#------------------- TEST ----------------------------------------------
+#storico_chat_finto = [
+   # {
+        #"ruolo": "user",
+        #"tipo_messaggio": "testo",
+        #"contenuto": "Mostrami i dati estratti dal catalogo."
+    #},
+    #{
+       # "ruolo": "assistant",
+        #"tipo_messaggio": "tabella_excel",
+        #"contenuto":EXCEL_PRESENTAZIONE
+   # },
+    #{
+        #"ruolo": "user",
+        #"tipo_messaggio": "testo",
+        #"contenuto": "Fantastico! E puoi farmi anche un grafico a barre di questi dati, magari mostrando la distribuzione dei prodotti per categoria?"
+    #},
+    #{
+        #"ruolo": "assistant",
+        #"tipo_messaggio": "grafico_excel",
+        #"contenuto": EXCEL_PRESENTAZIONE
+    #}
+#]
+
+#for messaggio in storico_chat_finto:
+    #with st.chat_message(messaggio["ruolo"]): 
+        #if messaggio["tipo_messaggio"] == "testo":
+            #st.markdown(messaggio["contenuto"])  
+        #elif messaggio["tipo_messaggio"] == "tabella_excel":
+            #df = pd.read_excel(messaggio["contenuto"])
+            #st.dataframe(df, use_container_width=True) 
+        #elif messaggio["tipo_messaggio"] == "grafico_excel":
+           # df = pd.read_excel(messaggio["contenuto"])
+            #figura = px.bar(df, x="Modello PAL", y="Portata Massima Mandata Standard", title="Analisi Portata per Modello")
+            #st.plotly_chart(figura, use_container_width=True)
+        #else:
+            #st.markdown("Tipo di messaggio non riconosciuto.")
+#-----------------------------------------------------------------------
 
 user_query = st.chat_input("Fai una domanda tecnica sui prodotti o servizi Zoppellaro...")
 
@@ -297,17 +362,6 @@ if user_query:
                     #     elif dati["tipo"] == "tabella":
                     #         st.markdown(f"**Tabella: {dati['titolo']}**")
                     #         st.dataframe(df_visivo, use_container_width=True, hide_index=True)
-                
-                if response.get("dati_visivi"):
-                    dati = response["dati_visivi"]
-                    df_visivo = pd.DataFrame(dati["dati"])
-                    
-                    if dati["tipo"] == "grafico_barre":
-                        figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
-                        st.plotly_chart(figura, use_container_width=True)
-                    elif dati["tipo"] == "tabella":
-                        st.markdown(f"**Tabella: {dati['titolo']}**")
-                        st.dataframe(df_visivo, use_container_width=True, hide_index=True)
                 
                 cronologia_corrente.append({
                     "role": "assistant", 

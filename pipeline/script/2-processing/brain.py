@@ -5,6 +5,7 @@ import pandas as pd
 import difflib
 import re
 import time
+import time
 from typing import Annotated, List, TypedDict
 import operator
 from langgraph.graph import StateGraph, END
@@ -14,6 +15,7 @@ from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
+import plotly.express as px
 import plotly.express as px
 
 class AgentState(TypedDict):
@@ -72,13 +74,20 @@ def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
     ARGOMENTI DA PASSARE DIRETTAMENTE:
     - modello: estrai SOLO il codice esatto (es. '091-051').
     - parametro: la grandezza fisica da cercare (es. 'Portata Massima Mandata')."""
+def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
+    """Usa questo tool SEMPRE e SOLO quando l'utente nomina un MODELLO SPECIFICO (es. '091-051' o '061-035').
+    ARGOMENTI DA PASSARE DIRETTAMENTE:
+    - modello: estrai SOLO il codice esatto (es. '091-051').
+    - parametro: la grandezza fisica da cercare (es. 'Portata Massima Mandata')."""
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_SPECIFICO")
+    print(f"[TOOL] Ricerca chirurgica -> Modello: '{modello}' | Parametro: '{parametro}'")
     print(f"[TOOL] Ricerca chirurgica -> Modello: '{modello}' | Parametro: '{parametro}'")
     
     if df_catalogo is None:
         return "Errore: file Excel non caricato."
     
     # pulizia del codice cercato
+    codice_pulito = modello.upper().replace("MODELLO", "").strip()
     codice_pulito = modello.upper().replace("MODELLO", "").strip()
     
     # cerca la riga esatta nel DataFrame Pandas
@@ -91,11 +100,18 @@ def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
     if parametro == "Tutti" or parametro.strip() == "":
          return f"Hai trovato il modello {codice_pulito}, ma non hai estratto il parametro richiesto! Chiedi all'utente cosa vuole sapere di preciso (es. dimensioni, peso, portata)."
          
+        
+    # salvagente anti-crash se l'AI dimentica il parametro
+    if parametro == "Tutti" or parametro.strip() == "":
+         return f"Hai trovato il modello {codice_pulito}, ma non hai estratto il parametro richiesto! Chiedi all'utente cosa vuole sapere di preciso (es. dimensioni, peso, portata)."
+         
     # cerca le colonne che contengono la parola richiesta
+    richiesta_pulita = parametro.lower().strip()
     richiesta_pulita = parametro.lower().strip()
     colonne_trovate = [col for col in colonne_catalogo if richiesta_pulita in str(col).lower()]
     
     if not colonne_trovate:
+         return f"Il parametro '{parametro}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
          return f"Il parametro '{parametro}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
          
     # estrae tutti i parametri trovati
@@ -768,7 +784,8 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Usa 'verifica_prevalenza_canali' passando i modelli e i Pascal richiesti.
 
 5. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
-- Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
+- Se nella richiesta è presente un codice modello esatto (es. 091-051), usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
+- È ASSOLUTAMENTE VIETATO usare 'consulta_dizionario_catalogo' se la domanda contiene il codice di un modello.
 
 6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
 - Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
@@ -776,8 +793,15 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
 - Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
 
-8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o un'analisi visiva:
-- Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
+8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o una TABELLA visiva:
+- Usa il tool 'prepara_dati_grafico' SOLO E SOLTANTO SE l'utente ha scritto testualmente una di queste tre parole.
+- NON usare questo tool di tua iniziativa per "abbellire" i risultati. Per le ricerche normali sei OBBLIGATO a usare sempre 'cerca_catalogo_generico'.
+
+9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati per Python":
+- Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente in modo che possa generare il codice corretto.
+
+10. IF l'utente chiede di creare un GRAFICO, un DIAGRAMMA o PLOTTARE i dati che sono appena stati estratti o filtrati nel CSV:
+- Usa il tool 'genera_grafico_avanzato' passando la frase intera dell'utente.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
@@ -788,6 +812,9 @@ REGOLE GLOBALI:
 
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
+
+    match_modello_specifico = re.search(r"\b\d{3}-\d{3}\b", user_query)
+    richiesta_visiva = any(parola in user_query.lower() for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
 
     messaggi_completi = memoria_conversazioni[chat_id]
     messaggi_per_llm = [messaggi_completi[0]]
@@ -802,7 +829,7 @@ REGOLE GLOBALI:
     try:
         # attiva il cronometro prima che l'llm inizi a pensare
         start_time = time.time()
-        result = app.invoke(current_state, {"recursion_limit": 3})
+        result = app.invoke(current_state, {"recursion_limit": 10})
         end_time = time.time()
         tempo_trascorso = end_time - start_time
         print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
@@ -837,9 +864,7 @@ REGOLE GLOBALI:
             for tool in msg.tool_calls:
                 if tool['name'] not in tool_usati:
                     tool_usati.append(tool['name'])
-    #aggiunge alla memoria SOLO la risposta finale, senza il ragionamento dietro
-    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
-                    
+
     global dati_visivi_temporanei
     dati_da_esportare = dati_visivi_temporanei
     dati_visivi_temporanei = None
@@ -848,56 +873,7 @@ REGOLE GLOBALI:
         "testo": risposta_assistente,
         "azioni": tool_usati,
         "dati_visivi": dati_da_esportare
-        "azioni": tool_usati,
-        "dati_visivi": dati_da_esportare
     }
-
-@tool 
-def estrai_dati_dinamici(richiesta_utente: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di filtrare dati o creare un dataframe per un grafico. 
-    Passa in 'richiesta_utente' la frase esatta dell'utente."""
-    try:
-        cartella_corrente = os.path.dirname(os.path.abspath(__file__))
-        cartella_script = os.path.dirname(cartella_corrente)
-        cartella_pipeline = os.path.dirname(cartella_script)
-        percorso_excel = os.path.join(cartella_pipeline, 'data', '1-preprocessing', 'catalogo.xlsx')
-        cartella_temp = os.path.join(cartella_pipeline, 'data', '1-preprocessing')
-        os.makedirs(cartella_temp, exist_ok=True)
-        path_salvataggio = os.path.join(cartella_temp, 'dataframe_grafico.csv')
-        df_caricato = pd.read_excel(percorso_excel)
-        colonne_reali = list(df_caricato.columns)
-        prompt = f"""
-        Sei un programmatore Python esperto in analisi dati con Pandas.
-        Il tuo compito è tradurre questa richiesta in codice: '{richiesta_utente}'
-        
-        Hai a disposizione in memoria un dataframe Pandas chiamato 'df_catalogo'.
-        Per evitare errori 'KeyError', ecco la lista ESATTA delle colonne disponibili nel dataframe:
-        {colonne_reali}
-        
-        REGOLE:
-        1. Salva il risultato finale in una variabile chiamata esattamente 'df_risultato'.
-        2. Scrivi SOLO ed ESCLUSIVAMENTE codice Python. 
-        3. Niente saluti, niente spiegazioni, niente formattazione markdown (```python).
-        """
-        llm = ChatOllama(model="qwen2.5:7b-instruct-q4_K_M", temperature=0)
-        risposta_llm = llm.invoke(prompt)
-        codice_python = risposta_llm.content
-        codice_pulito = codice_python.replace("```python", "").replace("```", "").strip()
-        print(f"\n[DEBUG LLM] Codice Pandas generato e in esecuzione:\n{codice_pulito}\n")
-    
-        scatola_sicura = {
-            "pd": pd,
-            "df_catalogo": df_caricato
-        }
-        exec(codice_pulito, {}, scatola_sicura)
-        df_finale = scatola_sicura.get("df_risultato")
-        if df_finale is None:
-            return "Errore: il codice generato non ha prodotto una variabile 'df_risultato'."
-        
-        df_finale.to_csv(path_salvataggio, index=False)
-        return f"Dati dinamici estratti e salvati in '{path_salvataggio}'."
-    except Exception as e:
-        return f"Si è verificato un errore durante l'estrazione dei dati dinamici: {e}"
 
 
 #5 INIZIALIZZAZIONE GLOBALE E SETUP
@@ -927,16 +903,17 @@ except Exception:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [cerca_catalogo_specifico, 
-         cerca_catalogo_generico, 
-         cerca_sito_web, cerca_manuali, 
-         calcola_fabbisogno_termico, 
-         calcola_portata_aria, 
-         calcola_consumo_elettrico, 
-         verifica_prevalenza_canali,
-         consulta_dizionario_catalogo,
-         prepara_dati_grafico,
-         estrai_dati_dinamici]
+tools = [#cerca_catalogo_specifico, 
+         #cerca_catalogo_generico, 
+         #cerca_sito_web, cerca_manuali, 
+         #calcola_fabbisogno_termico, 
+         #calcola_portata_aria, 
+         #calcola_consumo_elettrico, 
+         #verifica_prevalenza_canali,
+         #consulta_dizionario_catalogo,
+         #prepara_dati_grafico,
+         estrai_dati_dinamici,
+         genera_grafico_avanzato]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
@@ -955,17 +932,14 @@ def route_after_tool(state: AgentState) -> str:
         return "end"
     return "agent"
 
+def route_after_tool(state: AgentState) -> str:
+    global dati_visivi_temporanei
+    if dati_visivi_temporanei is not None:
+        return "end"
+    return "agent"
+
 workflow.set_entry_point("agent")
 workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
-workflow.add_edge("tools", END)
+workflow.add_conditional_edges("tools", route_after_tool, {"agent": "agent", "end": END})
 
 app = workflow.compile()
-
-if __name__ == "__main__":
-    print("Avvio il test del tool di estrazione dinamica...")
-    
-    domanda_test = "Filtra il catalogo e tienimi solo i modelli che hanno una Portata Massima Mandata Standard piu alta."
-    risultato = estrai_dati_dinamici.invoke({"richiesta_utente": domanda_test})
-    
-    print("\n--- RISPOSTA DEL TOOL ---")
-    print(risultato)
