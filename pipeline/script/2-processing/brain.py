@@ -627,13 +627,14 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         prompt = f"""
         Sei un programmatore Python. Scrivi codice Pandas per questa richiesta: '{richiesta_utente}'
         
-        Hai a disposizione il dataframe 'df' (già caricato in memoria). 
-        Colonne esatte disponibili: {colonne_reali}
+        Hai a disposizione il dataframe 'df'. 
+        Colonne disponibili: {colonne_reali}
         
         REGOLE VITALI:
-        1. Esegui i filtri su 'df' e salva il risultato ESATTAMENTE in una variabile chiamata 'df_risultato'.
-        2. NON importare librerie e NON usare funzioni di esportazione come to_csv().
-        3. Restituisci SOLO il codice dentro i backtick ```python ... ```.
+        1. Salva il risultato ESATTAMENTE nella variabile 'df_risultato'.
+        2. DEVI usare ESATTAMENTE i numeri e i valori scritti nella richiesta dell'utente. Se chiede maggiore di 900, DEVI scrivere > 900. NON inventare numeri.
+        3. NON importare librerie (niente import pandas). NON usare to_csv().
+        4. Scrivi SOLO il codice dentro i backtick ```python ... ```.
         """
         
         risposta_llm = llm.invoke(prompt)
@@ -658,10 +659,12 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         if df_finale is None or not isinstance(df_finale, pd.DataFrame):
             return "ERRORE: il codice non ha prodotto un dataframe valido nella variabile 'df_risultato'."
         
-        # Salvataggio fisico del CSV gestito in modo sicuro dal backend
+        # Salvataggio fisico del CSV
         df_finale.to_csv(path_salvataggio, index=False)
         return "SUCCESSO: I dati sono stati estratti e il file CSV è stato creato correttamente."
         
+    except PermissionError:
+        return "ERRORE CRITICO: Il file CSV è aperto in un altro programma (es. Excel). Dì all'utente di CHIUDERE IL FILE e riprovare la richiesta."
     except Exception as e:
         return f"ERRORE DI ESECUZIONE PYTHON: {e}"
 
