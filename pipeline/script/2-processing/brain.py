@@ -4,6 +4,7 @@ import time
 import pandas as pd
 import difflib
 import re
+import time
 from typing import Annotated, List, TypedDict
 import operator
 from langgraph.graph import StateGraph, END
@@ -13,6 +14,7 @@ from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
+import plotly.express as px
 
 class AgentState(TypedDict):
     messages: Annotated[List, operator.add]
@@ -65,19 +67,19 @@ def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
 #2 DEFINIZIONE DEI TOOL
 
 @tool
-def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente fornisce un CODICE ALFANUMERICO ESATTO di un modello (es. '061-035') e vuole sapere un suo dato tecnico.
-    ISTRUZIONI: 
-    1. 'codice_modello': estrai SOLO il codice esatto (es. '061-035').
-    2. 'parametro_richiesto': la grandezza fisica da cercare."""
+def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
+    """Usa questo tool SEMPRE e SOLO quando l'utente nomina un MODELLO SPECIFICO (es. '091-051' o '061-035').
+    ARGOMENTI DA PASSARE DIRETTAMENTE:
+    - modello: estrai SOLO il codice esatto (es. '091-051').
+    - parametro: la grandezza fisica da cercare (es. 'Portata Massima Mandata')."""
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_SPECIFICO")
-    print(f"[TOOL] Ricerca chirurgica -> Modello: '{codice_modello}' | Parametro: '{parametro_richiesto}'")
+    print(f"[TOOL] Ricerca chirurgica -> Modello: '{modello}' | Parametro: '{parametro}'")
     
     if df_catalogo is None:
         return "Errore: file Excel non caricato."
     
     # pulizia del codice cercato
-    codice_pulito = codice_modello.upper().replace("MODELLO", "").strip()
+    codice_pulito = modello.upper().replace("MODELLO", "").strip()
     
     # cerca la riga esatta nel DataFrame Pandas
     df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
@@ -85,12 +87,16 @@ def cerca_catalogo_specifico(codice_modello: str, parametro_richiesto: str) -> s
     if df_modello.empty:
         return f"Modello {codice_pulito} non trovato nel catalogo Excel."
         
+    # salvagente anti-crash se l'AI dimentica il parametro
+    if parametro == "Tutti" or parametro.strip() == "":
+         return f"Hai trovato il modello {codice_pulito}, ma non hai estratto il parametro richiesto! Chiedi all'utente cosa vuole sapere di preciso (es. dimensioni, peso, portata)."
+         
     # cerca le colonne che contengono la parola richiesta
-    richiesta_pulita = parametro_richiesto.lower().strip()
+    richiesta_pulita = parametro.lower().strip()
     colonne_trovate = [col for col in colonne_catalogo if richiesta_pulita in str(col).lower()]
     
     if not colonne_trovate:
-         return f"Il parametro '{parametro_richiesto}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
+         return f"Il parametro '{parametro}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
          
     # estrae tutti i parametri trovati
     risultati = []
@@ -498,18 +504,15 @@ def verifica_prevalenza_canali(codici_modelli: str, pascal_persi_impianto: float
     testo_ritorno = ""
     for r in risultati_finali:
         testo_ritorno = testo_ritorno + r + "\n\n"
-
-    # blocco di sicurezza per evitare loop
-    testo_ritorno = testo_ritorno + "=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Il calcolo della prevalenza è completato! ORA FERMATI. NON chiamare nessun altro tool (vietato usare il dizionario o altri calcoli). Scrivi immediatamente la risposta finale all'utente dicendo chiaramente se il modello è COMPATIBILE o NON COMPATIBILE."
     
-    return testo_ritorno
+    return testo_ritorno.strip()
 
 @tool
-def consulta_dizionario_catalogo(parola_chiave: str = "") -> str:
-    """Usa ESCLUSIVAMENTE questo tool per rispondere a domande su COSA c'è nel catalogo, sul SIGNIFICATO delle caratteristiche, o su COME vengono misurati i parametri (es. rumorosità, decibel, tipo di gas, alimentazione, trifase).
-    REGOLA: Se l'utente NON chiede un calcolo matematico, ma chiede spiegazioni discorsive, usa sempre questo tool.
-    PARAMETRI:
-    - parola_chiave: (Opzionale) La parola da cercare (es. 'rumorosità', 'gas'). Lascia vuoto per leggere tutto."""
+def consulta_dizionario_catalogo(parola_chiave: str) -> str:
+    """Usa questo tool SOLO per spiegare il SIGNIFICATO di termini tecnici o acronimi (es. 'EER', 'prevalenza').
+    DIVIETO ASSOLUTO: VIETATO usare questo tool se l'utente nomina un MODELLO SPECIFICO (es. '091-051'). Per i modelli usa 'cerca_catalogo_specifico'.
+    ARGOMENTI DA PASSARE DIRETTAMENTE:
+    - parola_chiave: la parola da cercare. OBBLIGATORIO."""
     print(f"\n[TOOL] Esecuzione CONSULTA_DIZIONARIO -> Ricerca: '{parola_chiave}'")
 
     # Percorso relativo sicuro
@@ -536,21 +539,22 @@ def consulta_dizionario_catalogo(parola_chiave: str = "") -> str:
             for r in risultati:
                 testo_ritorno = testo_ritorno + r + "\n\n"
             
-            return testo_ritorno + "=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Hai trovato i dati! ORA FERMATI. NON chiamare più nessun tool. Scrivi immediatamente la risposta finale all'utente usando SOLO questi dati."
+            return testo_ritorno.strip()
         else:
-            return f"Nessuna voce trovata per '{parola_chiave}'. Ecco il dizionario:\n\n{contenuto}\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: ORA FERMATI. NON chiamare più nessun tool. Scrivi la risposta finale all'utente e concludi."
+            return f"Nessuna voce trovata per la parola chiave '{parola_chiave}'."
 
-    return f"Ecco il dizionario completo:\n\n{contenuto}\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: ORA FERMATI. NON chiamare più nessun tool. Scrivi la risposta finale all'utente e concludi."
+    return "Errore: Devi fornire una parola chiave per cercare nel dizionario."
 
 dati_visivi_temporanei = None
 
 @tool
 def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "grafico", top_n: int = 5) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede un GRAFICO, un diagramma o una TABELLA visiva.
+    """Usa questo tool SOLO SE l'utente scrive ESPLICITAMENTE le parole 'grafico', 'diagramma' o 'tabella'.
+    DIVIETO ASSOLUTO: Se l'utente fa una ricerca normale (es. 'quali macchine...', 'mostrami i modelli...'), NON ESSERE PROATTIVO per abbellire la risposta: ti è VIETATO usare questo tool. Usa 'cerca_catalogo_generico'.
     ARGOMENTI DA PASSARE DIRETTAMENTE:
     - parametro_asse_y: Inserisci ESATTAMENTE il nome della colonna da analizzare.
     - tipo_visualizzazione: Scrivi "grafico" se l'utente chiede un grafico/diagramma. Scrivi "tabella" se chiede una tabella.
-    - top_n: il numero di modelli da mostrare nel grafico/tabella."""
+    - top_n: il numero di modelli da mostrare."""
     global dati_visivi_temporanei
     print(f"\n[TOOL] Esecuzione PREPARA_DATI_GRAFICO -> Asse Y: {parametro_asse_y} | Tipo: {tipo_visualizzazione}")
 
@@ -596,7 +600,119 @@ def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "gra
 
     dati_visivi_temporanei = dati_per_grafico
 
-    return "Dati estratti e inviati al frontend. Avvisa l'utente che i dati visivi sono a schermo.\n\n=== STOP TOOL ===\nORDINE TASSATIVO PER L'AI: Hai estratto i dati! ORA FERMATI. NON chiamare più nessun tool. Scrivi immediatamente la risposta finale all'utente confermando che l'analisi è visibile."
+    return "Analisi visiva pronta."
+
+@tool 
+def estrai_dati_dinamici(richiesta_utente: str) -> str:
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di elaborare i dati in modo complesso, estrarre file o creare nuovi dataframe personalizzati. 
+    Passa in 'richiesta_utente' la frase esatta dell'utente."""
+    global df_catalogo, llm # Richiamiamo le variabili globali già caricate
+    
+    if df_catalogo is None:
+         return "Errore: database catalogo non caricato in memoria."
+         
+    try:
+        cartella_corrente = os.path.dirname(os.path.abspath(__file__))
+        cartella_pipeline = os.path.dirname(os.path.dirname(cartella_corrente))
+        cartella_temp = os.path.join(cartella_pipeline, 'data', '1-preprocessing')
+        os.makedirs(cartella_temp, exist_ok=True)
+        path_salvataggio = os.path.join(cartella_temp, 'dataframe_grafico.csv')
+        
+        colonne_reali = list(df_catalogo.columns)
+        prompt = f"""
+        Sei un programmatore Python. Scrivi uno script Pandas per soddisfare questa richiesta: '{richiesta_utente}'
+        
+        Hai a disposizione il dataframe 'df_catalogo' (già caricato in memoria). 
+        Colonne disponibili (usa ESATTAMENTE questi nomi per evitare KeyError): {colonne_reali}
+        
+        REGOLE:
+        1. Filtra 'df_catalogo' e salva il risultato in una variabile chiamata ESATTAMENTE 'df_risultato'.
+        2. NON importare pandas, NON usare read_csv.
+        3. Restituisci SOLO il codice dentro i backtick ```python ... ```. Non aggiungere spiegazioni o commenti testuali.
+        """
+        
+        # Usiamo l'LLM globale, senza instanziarlo di nuovo
+        risposta_llm = llm.invoke(prompt)
+        testo_risposta = risposta_llm.content
+        
+        # Estrazione sicura tramite regex
+        match = re.search(r"```python\n(.*?)\n```", testo_risposta, re.DOTALL)
+        if match:
+            codice_pulito = match.group(1).strip()
+        else:
+            codice_pulito = testo_risposta.replace("```python", "").replace("```", "").strip()
+            
+        print(f"\n[DEBUG LLM] Codice Pandas generato e in esecuzione:\n{codice_pulito}\n")
+    
+        scatola_sicura = {
+            "pd": pd,
+            "df_catalogo": df_catalogo.copy() # Lavoriamo su una copia per non sporcare l'originale
+        }
+        
+        # Avviso di sicurezza: exec() esegue codice arbitrario. In produzione è un rischio.
+        exec(codice_pulito, {}, scatola_sicura)
+        df_finale = scatola_sicura.get("df_risultato")
+        
+        if df_finale is None:
+            return "Errore: il codice generato non ha prodotto una variabile 'df_risultato'."
+        
+        df_finale.to_csv(path_salvataggio, index=False)
+        return f"Dati dinamici estratti ed elaborati con successo. Avvisa l'utente."
+    except Exception as e:
+        return f"ERRORE DI ESECUZIONE PYTHON: {e}\n\n=== STOP TOOL ===\nORDINE PER L'AI: Il codice ha generato un errore. NON RITENTARE. Rispondi all'utente dicendo che non sei riuscito a generare il codice corretto per l'estrazione."
+
+@tool
+def genera_grafico_avanzato(richiesta_utente: str) -> str:
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente ti chiede di generare un grafico."""
+    global llm, dati_visivi_temporanei
+    
+    try:
+        # Caricamento del CSV (Task: caricare dal path fissato)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
+        csv_path = os.path.join(pipeline_dir, 'data', '1-preprocessing', 'dataframe_grafico.csv')
+        
+        if not os.path.exists(csv_path):
+            return "ERRORE: File dati non trovato. Estrai prima i dati."
+
+        df_temp = pd.read_csv(csv_path)
+        df_temp.columns = df_temp.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
+        colonne = list(df_temp.columns)
+        
+        prompt = f"""
+        Scrivi SOLO codice Python per un grafico Plotly. Richiesta: '{richiesta_utente}'
+        Usa 'df' (dataframe pronto) e 'px' (plotly.express). Colonne: {colonne}
+        REGOLA: Crea il grafico e assegnalo alla variabile 'fig'. NON usare fig.show() o salvataggi su disco.
+        """
+        
+        risposta_llm = llm.invoke(prompt)
+        codice = re.search(r"```python\n(.*?)\n```", risposta_llm.content, re.DOTALL)
+        codice_pulito = codice.group(1).strip() if codice else risposta_llm.content.strip()
+        
+        # Esecuzione in RAM
+        scatola_sicura = {"df": df_temp, "px": px}
+        exec(codice_pulito, {}, scatola_sicura)
+        
+        if 'fig' in scatola_sicura:
+            cartella_grafici = os.path.join(pipeline_dir, 'data', '3-user_interface', 'grafici_salvati')
+            os.makedirs(cartella_grafici, exist_ok=True)
+            
+            # Genera un nome file unico usando il timestamp
+            nome_file = f"grafico_{int(time.time())}.html"
+            html_path = os.path.join(cartella_grafici, nome_file)
+            
+            # Salvataggio dell'HTML su disco
+            scatola_sicura['fig'].write_html(html_path, full_html=False, include_plotlyjs='cdn')
+            
+            dati_visivi_temporanei = {"tipo": "grafico_html_file", "path": html_path}
+            
+            return "SUCCESSO: Il grafico è stato generato e salvato."
+        
+        return "ERRORE: Il codice non ha prodotto la variabile 'fig'."
+            
+    except Exception as e:
+        return f"ERRORE TECNICO: {e}"
+    
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
 def call_model(state: AgentState):
@@ -648,7 +764,8 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Usa 'verifica_prevalenza_canali' passando i modelli e i Pascal richiesti.
 
 5. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
-- Usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
+- Se nella richiesta è presente un codice modello esatto (es. 091-051), usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
+- È ASSOLUTAMENTE VIETATO usare 'consulta_dizionario_catalogo' se la domanda contiene il codice di un modello.
 
 6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
 - Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
@@ -656,8 +773,15 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
 - Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
 
-8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o un'analisi visiva:
-- Usa ESCLUSIVAMENTE il tool 'prepara_dati_grafico'. NON generare tabelle in Markdown.
+8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o una TABELLA visiva:
+- Usa il tool 'prepara_dati_grafico' SOLO E SOLTANTO SE l'utente ha scritto testualmente una di queste tre parole.
+- NON usare questo tool di tua iniziativa per "abbellire" i risultati. Per le ricerche normali sei OBBLIGATO a usare sempre 'cerca_catalogo_generico'.
+
+9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati per Python":
+- Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente in modo che possa generare il codice corretto.
+
+10. IF l'utente chiede di creare un GRAFICO, un DIAGRAMMA o PLOTTARE i dati che sono appena stati estratti o filtrati nel CSV:
+- Usa il tool 'genera_grafico_avanzato' passando la frase intera dell'utente.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
@@ -665,10 +789,14 @@ REGOLE GLOBALI:
 - DIVIETO DI CALCOLO A VUOTO: Se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
 - DIVIETO DI JSON: È severamente vietato rispondere mostrando codice JSON grezzo all'utente.
 - DIVIETO CHIAMATE MULTIPLE: Ti è ASSOLUTAMENTE VIETATO chiamare due tool contemporaneamente. Scegli UN SOLO tool alla volta, attendi il risultato, e poi rispondi all'utente.
-- REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da QUALSIASI tool, ti è ASSOLUTAMENTE VIETATO richiamare lo stesso tool o chiamarne altri. Devi IMMEDIATAMENTE formulare la risposta discorsiva per l'utente e fermarti.""")
+- REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da QUALSIASI tool, ti è ASSOLUTAMENTE VIETATO richiamare lo stesso tool o chiamarne altri per fare verifiche extra. Devi IMMEDIATAMENTE formulare la risposta discorsiva per l'utente, basandoti sui dati estratti, e fermarti.
+- REGOLA DI PRIVACY: Ti è ASSOLUTAMENTE VIETATO menzionare nomi di cartelle, percorsi di file o dettagli del sistema operativo (es. "tirocinio", "exprivia", "C:/Users...") nelle tue risposte. Limitati esclusivamente ai dati tecnici del catalogo.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
+
+    match_modello_specifico = re.search(r"\b\d{3}-\d{3}\b", user_query)
+    richiesta_visiva = any(parola in user_query.lower() for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
 
     messaggi_completi = memoria_conversazioni[chat_id]
     messaggi_per_llm = [messaggi_completi[0]]
@@ -683,7 +811,7 @@ REGOLE GLOBALI:
     try:
         # attiva il cronometro prima che l'llm inizi a pensare
         start_time = time.time()
-        result = app.invoke(current_state, {"recursion_limit": 3})
+        result = app.invoke(current_state, {"recursion_limit": 10})
         end_time = time.time()
         tempo_trascorso = end_time - start_time
         print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
@@ -706,9 +834,7 @@ REGOLE GLOBALI:
             for tool in msg.tool_calls:
                 if tool['name'] not in tool_usati:
                     tool_usati.append(tool['name'])
-    #aggiunge alla memoria SOLO la risposta finale, senza il ragionamento dietro
-    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
-                    
+
     global dati_visivi_temporanei
     dati_da_esportare = dati_visivi_temporanei
     dati_visivi_temporanei = None
@@ -718,53 +844,6 @@ REGOLE GLOBALI:
         "azioni": tool_usati,
         "dati_visivi": dati_da_esportare
     }
-
-@tool 
-def estrai_dati_dinamici(richiesta_utente: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di filtrare dati o creare un dataframe per un grafico. 
-    Passa in 'richiesta_utente' la frase esatta dell'utente."""
-    try:
-        cartella_corrente = os.path.dirname(os.path.abspath(__file__))
-        cartella_script = os.path.dirname(cartella_corrente)
-        cartella_pipeline = os.path.dirname(cartella_script)
-        percorso_excel = os.path.join(cartella_pipeline, 'data', '1-preprocessing', 'catalogo.xlsx')
-        cartella_temp = os.path.join(cartella_pipeline, 'data', '1-preprocessing')
-        os.makedirs(cartella_temp, exist_ok=True)
-        path_salvataggio = os.path.join(cartella_temp, 'dataframe_grafico.csv')
-        df_caricato = pd.read_excel(percorso_excel)
-        colonne_reali = list(df_caricato.columns)
-        prompt = f"""
-        Sei un programmatore Python esperto in analisi dati con Pandas.
-        Il tuo compito è tradurre questa richiesta in codice: '{richiesta_utente}'
-        
-        Hai a disposizione in memoria un dataframe Pandas chiamato 'df_catalogo'.
-        Per evitare errori 'KeyError', ecco la lista ESATTA delle colonne disponibili nel dataframe:
-        {colonne_reali}
-        
-        REGOLE:
-        1. Salva il risultato finale in una variabile chiamata esattamente 'df_risultato'.
-        2. Scrivi SOLO ed ESCLUSIVAMENTE codice Python. 
-        3. Niente saluti, niente spiegazioni, niente formattazione markdown (```python).
-        """
-        llm = ChatOllama(model="qwen2.5:7b-instruct-q4_K_M", temperature=0)
-        risposta_llm = llm.invoke(prompt)
-        codice_python = risposta_llm.content
-        codice_pulito = codice_python.replace("```python", "").replace("```", "").strip()
-        print(f"\n[DEBUG LLM] Codice Pandas generato e in esecuzione:\n{codice_pulito}\n")
-    
-        scatola_sicura = {
-            "pd": pd,
-            "df_catalogo": df_caricato
-        }
-        exec(codice_pulito, {}, scatola_sicura)
-        df_finale = scatola_sicura.get("df_risultato")
-        if df_finale is None:
-            return "Errore: il codice generato non ha prodotto una variabile 'df_risultato'."
-        
-        df_finale.to_csv(path_salvataggio, index=False)
-        return f"Dati dinamici estratti e salvati in '{path_salvataggio}'."
-    except Exception as e:
-        return f"Si è verificato un errore durante l'estrazione dei dati dinamici: {e}"
 
 
 #5 INIZIALIZZAZIONE GLOBALE E SETUP
@@ -794,16 +873,17 @@ except Exception:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [cerca_catalogo_specifico, 
-         cerca_catalogo_generico, 
-         cerca_sito_web, cerca_manuali, 
-         calcola_fabbisogno_termico, 
-         calcola_portata_aria, 
-         calcola_consumo_elettrico, 
-         verifica_prevalenza_canali,
-         consulta_dizionario_catalogo,
-         prepara_dati_grafico,
-         estrai_dati_dinamici]
+tools = [#cerca_catalogo_specifico, 
+         #cerca_catalogo_generico, 
+         #cerca_sito_web, cerca_manuali, 
+         #calcola_fabbisogno_termico, 
+         #calcola_portata_aria, 
+         #calcola_consumo_elettrico, 
+         #verifica_prevalenza_canali,
+         #consulta_dizionario_catalogo,
+         #prepara_dati_grafico,
+         estrai_dati_dinamici,
+         genera_grafico_avanzato]
 
 # configurazione LangGraph e LLM
 # parametri aggiunti per limitare i consumi della cpu e della ram
@@ -816,17 +896,14 @@ workflow = StateGraph(AgentState)
 workflow.add_node("agent", call_model)
 workflow.add_node("tools", tool_node)
 
+def route_after_tool(state: AgentState) -> str:
+    global dati_visivi_temporanei
+    if dati_visivi_temporanei is not None:
+        return "end"
+    return "agent"
+
 workflow.set_entry_point("agent")
 workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
-workflow.add_edge("tools", END)
+workflow.add_conditional_edges("tools", route_after_tool, {"agent": "agent", "end": END})
 
 app = workflow.compile()
-
-if __name__ == "__main__":
-    print("Avvio il test del tool di estrazione dinamica...")
-    
-    domanda_test = "Filtra il catalogo e tienimi solo i modelli che hanno una Portata Massima Mandata Standard piu alta."
-    risultato = estrai_dati_dinamici.invoke({"richiesta_utente": domanda_test})
-    
-    print("\n--- RISPOSTA DEL TOOL ---")
-    print(risultato)
