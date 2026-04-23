@@ -604,62 +604,66 @@ def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "gra
 
 @tool 
 def estrai_dati_dinamici(richiesta_utente: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di elaborare i dati in modo complesso, estrarre file o creare nuovi dataframe personalizzati. 
-    Passa in 'richiesta_utente' la frase esatta dell'utente."""
-    global df_catalogo, llm # Richiamiamo le variabili globali già caricate
+    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di elaborare i dati in modo complesso, estrarre file o creare nuovi dataframe personalizzati."""
+    global df_catalogo, llm
+    print(f"\n[TOOL] Esecuzione ESTRAI_DATI_DINAMICI -> Richiesta: '{richiesta_utente}'")
     
     if df_catalogo is None:
          return "Errore: database catalogo non caricato in memoria."
          
     try:
+        # Configurazione percorsi di output
         cartella_corrente = os.path.dirname(os.path.abspath(__file__))
         cartella_pipeline = os.path.dirname(os.path.dirname(cartella_corrente))
         cartella_temp = os.path.join(cartella_pipeline, 'data', '1-preprocessing')
         os.makedirs(cartella_temp, exist_ok=True)
         path_salvataggio = os.path.join(cartella_temp, 'dataframe_grafico.csv')
         
-        colonne_reali = list(df_catalogo.columns)
+        # Pulizia preventiva degli spazi nei nomi delle colonne
+        df_lavoro = df_catalogo.copy()
+        df_lavoro.columns = df_lavoro.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
+        colonne_reali = list(df_lavoro.columns)
+        
         prompt = f"""
-        Sei un programmatore Python. Scrivi uno script Pandas per soddisfare questa richiesta: '{richiesta_utente}'
+        Sei un programmatore Python. Scrivi codice Pandas per questa richiesta: '{richiesta_utente}'
         
-        Hai a disposizione il dataframe 'df_catalogo' (già caricato in memoria). 
-        Colonne disponibili (usa ESATTAMENTE questi nomi per evitare KeyError): {colonne_reali}
+        Hai a disposizione il dataframe 'df' (già caricato in memoria). 
+        Colonne esatte disponibili: {colonne_reali}
         
-        REGOLE:
-        1. Filtra 'df_catalogo' e salva il risultato in una variabile chiamata ESATTAMENTE 'df_risultato'.
-        2. NON importare pandas, NON usare read_csv.
-        3. Restituisci SOLO il codice dentro i backtick ```python ... ```. Non aggiungere spiegazioni o commenti testuali.
+        REGOLE VITALI:
+        1. Esegui i filtri su 'df' e salva il risultato ESATTAMENTE in una variabile chiamata 'df_risultato'.
+        2. NON importare librerie e NON usare funzioni di esportazione come to_csv().
+        3. Restituisci SOLO il codice dentro i backtick ```python ... ```.
         """
         
-        # Usiamo l'LLM globale, senza instanziarlo di nuovo
         risposta_llm = llm.invoke(prompt)
         testo_risposta = risposta_llm.content
         
-        # Estrazione sicura tramite regex
+        # Estrazione sicura del codice generato
         match = re.search(r"```python\n(.*?)\n```", testo_risposta, re.DOTALL)
-        if match:
-            codice_pulito = match.group(1).strip()
-        else:
-            codice_pulito = testo_risposta.replace("```python", "").replace("```", "").strip()
+        codice_pulito = match.group(1).strip() if match else testo_risposta.replace("```python", "").replace("```", "").strip()
             
-        print(f"\n[DEBUG LLM] Codice Pandas generato e in esecuzione:\n{codice_pulito}\n")
+        print(f"\n[DEBUG LLM] Codice Pandas generato:\n{codice_pulito}\n")
     
+        # Iniezione variabili nell'ambiente isolato
         scatola_sicura = {
             "pd": pd,
-            "df_catalogo": df_catalogo.copy() # Lavoriamo su una copia per non sporcare l'originale
+            "df": df_lavoro,
+            "df_risultato": None
         }
         
-        # Avviso di sicurezza: exec() esegue codice arbitrario. In produzione è un rischio.
         exec(codice_pulito, {}, scatola_sicura)
         df_finale = scatola_sicura.get("df_risultato")
         
-        if df_finale is None:
-            return "Errore: il codice generato non ha prodotto una variabile 'df_risultato'."
+        if df_finale is None or not isinstance(df_finale, pd.DataFrame):
+            return "ERRORE: il codice non ha prodotto un dataframe valido nella variabile 'df_risultato'."
         
+        # Salvataggio fisico del CSV gestito in modo sicuro dal backend
         df_finale.to_csv(path_salvataggio, index=False)
-        return f"Dati dinamici estratti ed elaborati con successo. Avvisa l'utente."
+        return "SUCCESSO: I dati sono stati estratti e il file CSV è stato creato correttamente."
+        
     except Exception as e:
-        return f"ERRORE DI ESECUZIONE PYTHON: {e}\n\n=== STOP TOOL ===\nORDINE PER L'AI: Il codice ha generato un errore. NON RITENTARE. Rispondi all'utente dicendo che non sei riuscito a generare il codice corretto per l'estrazione."
+        return f"ERRORE DI ESECUZIONE PYTHON: {e}"
 
 @tool
 def genera_grafico_avanzato(richiesta_utente: str) -> str:
