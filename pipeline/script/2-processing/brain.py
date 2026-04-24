@@ -633,8 +633,9 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         2. DIVIETO ASSOLUTO: NON usare mai 'str.contains' o espressioni regolari per filtrare i numeri.
         3. PRIMA di applicare filtri matematici (>, <, ==), forza la conversione della colonna interessata in questo modo esatto:
            df['NOME_COLONNA'] = pd.to_numeric(df['NOME_COLONNA'].astype(str).str.replace(',', '.').str.replace(' ', ''), errors='coerce')
-        4. Solo DOPO la conversione, applica il filtro numerico (es. df_risultato = df[df['NOME_COLONNA'] > 900]).
-        5. Scrivi solo il codice Python tra i backtick ```python ... ``` senza commenti testuali esterni.
+        4. APPLICA SOLO ED ESCLUSIVAMENTE I FILTRI RICHIESTI. È severamente vietato inventare o aggiungere condizioni su altre colonne non menzionate dall'utente.
+        5. Solo DOPO la conversione, applica il filtro numerico.
+        6. Scrivi solo il codice Python tra i backtick ```python ... ``` senza commenti testuali esterni.
         """
         
         risposta_llm = llm.invoke(prompt)
