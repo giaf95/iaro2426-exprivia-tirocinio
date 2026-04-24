@@ -612,7 +612,6 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
          return "Errore: database catalogo non caricato in memoria."
          
     try:
-        # Percorso di output richiesto: data/3-user_interface
         script_dir = os.path.dirname(os.path.abspath(__file__))
         pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
         cartella_destinazione = os.path.join(pipeline_dir, 'data', '3-user_interface')
@@ -629,10 +628,13 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         Dataframe disponibile: 'df'
         Colonne: {colonne_reali}
         
-        REGOLE:
-        1. Salva il risultato filtrato nella variabile 'df_risultato'.
-        2. Usa i valori numerici esatti indicati dall'utente.
-        3. Scrivi solo il codice tra i backtick ```python ... ```.
+        REGOLE VITALI:
+        1. Salva il risultato ESATTAMENTE nella variabile 'df_risultato'.
+        2. DIVIETO ASSOLUTO: NON usare mai 'str.contains' o espressioni regolari per filtrare i numeri.
+        3. PRIMA di applicare filtri matematici (>, <, ==), forza la conversione della colonna interessata in questo modo esatto:
+           df['NOME_COLONNA'] = pd.to_numeric(df['NOME_COLONNA'].astype(str).str.replace(',', '.').str.replace(' ', ''), errors='coerce')
+        4. Solo DOPO la conversione, applica il filtro numerico (es. df_risultato = df[df['NOME_COLONNA'] > 900]).
+        5. Scrivi solo il codice Python tra i backtick ```python ... ``` senza commenti testuali esterni.
         """
         
         risposta_llm = llm.invoke(prompt)
@@ -646,16 +648,15 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         df_finale = scatola_sicura.get("df_risultato")
         
         if df_finale is not None and isinstance(df_finale, pd.DataFrame):
-            # Salvataggio fisico nel path dell'interfaccia utente
             df_finale.to_csv(path_salvataggio, index=False)
             return "SUCCESSO: Dati estratti e salvati in data/3-user_interface/dataframe_grafico.csv"
         
         return "ERRORE: Generazione dataframe fallita."
         
     except PermissionError:
-        return "ERRORE: Chiudi il file CSV se è aperto in Excel e riprova."
+        return "ERRORE CRITICO: Chiudi il file CSV se è aperto in Excel e riprova."
     except Exception as e:
-        return f"ERRORE: {e}"
+        return f"ERRORE DI ESECUZIONE PYTHON: {e}"
 
 @tool
 def genera_grafico_avanzato(richiesta_utente: str) -> str:
