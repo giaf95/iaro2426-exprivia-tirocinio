@@ -623,25 +623,21 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         colonne_reali = list(df_lavoro.columns)
         
         prompt = f"""
-        Sei un analista dati. Traduci ESATTAMENTE la richiesta dell'utente in codice Pandas.
+        Scrivi un filtro Pandas in base a questa richiesta: '{richiesta_utente}'
         
-        Richiesta dell'utente: "{richiesta_utente}"
+        Lista esatta delle colonne del dataframe 'df': {colonne_reali}
         
-        Dataframe: 'df'
-        Colonne valide: {colonne_reali}
+        COMPILA QUESTO TEMPLATE ESATTO sostituendo solo le 3 variabili in MAIUSCOLO:
         
-        ESEMPIO DI COMPORTAMENTO (DA IMITARE):
-        Se l'utente chiede: "Trova i modelli con Peso superiore a 150"
-        Devi scrivere:
         ```python
-        df_risultato = df[pd.to_numeric(df['Peso'].astype(str).str.replace(',', '.').str.replace(' ', ''), errors='coerce') > 150]
+        df_risultato = df[pd.to_numeric(df['NOME_COLONNA'].astype(str).str.replace(',', '.').str.replace(' ', ''), errors='coerce') SEGNO NUMERO]
         ```
         
-        REGOLE TASSATIVE:
-        1. NON INVENTARE FILTRI. Estrai colonna e numero SOLO dalla "Richiesta dell'utente".
-        2. Salva SEMPRE il risultato finale nella variabile 'df_risultato'.
-        3. Forza sempre la conversione con pd.to_numeric come mostrato nell'esempio.
-        4. Restituisci SOLO il codice dentro i backtick, nessuna parola extra.
+        REGOLE DI COMPILAZIONE:
+        1. [NOME_COLONNA]: Trova il nome nella lista fornita che corrisponde alla richiesta. Copialo IN MODO IDENTICO (incluso se inizia con un numero, es. '1 Prevalenza...').
+        2. [SEGNO]: Usa >, <, >=, <=, o ==.
+        3. [NUMERO]: Usa il numero scritto nella richiesta (es. 900). VIETATO inventare numeri.
+        4. Restituisci SOLO ed ESCLUSIVAMENTE la riga di codice compilata dentro i backtick.
         """
         
         risposta_llm = llm.invoke(prompt)
