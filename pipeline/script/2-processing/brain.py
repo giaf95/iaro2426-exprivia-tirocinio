@@ -623,19 +623,25 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         colonne_reali = list(df_lavoro.columns)
         
         prompt = f"""
-        Sei un programmatore Python esperto in Pandas. Scrivi codice per questa richiesta: '{richiesta_utente}'
+        Sei un analista dati. Traduci ESATTAMENTE la richiesta dell'utente in codice Pandas.
         
-        Dataframe disponibile: 'df'
-        Colonne: {colonne_reali}
+        Richiesta dell'utente: "{richiesta_utente}"
         
-        REGOLE VITALI:
-        1. Salva il risultato ESATTAMENTE nella variabile 'df_risultato'.
-        2. DIVIETO ASSOLUTO: NON usare mai 'str.contains' o espressioni regolari per filtrare i numeri.
-        3. PRIMA di applicare filtri matematici (>, <, ==), forza la conversione della colonna interessata in questo modo esatto:
-           df['NOME_COLONNA'] = pd.to_numeric(df['NOME_COLONNA'].astype(str).str.replace(',', '.').str.replace(' ', ''), errors='coerce')
-        4. APPLICA SOLO ED ESCLUSIVAMENTE I FILTRI RICHIESTI. È severamente vietato inventare o aggiungere condizioni su altre colonne non menzionate dall'utente.
-        5. Solo DOPO la conversione, applica il filtro numerico.
-        6. Scrivi solo il codice Python tra i backtick ```python ... ``` senza commenti testuali esterni.
+        Dataframe: 'df'
+        Colonne valide: {colonne_reali}
+        
+        ESEMPIO DI COMPORTAMENTO (DA IMITARE):
+        Se l'utente chiede: "Trova i modelli con Peso superiore a 150"
+        Devi scrivere:
+        ```python
+        df_risultato = df[pd.to_numeric(df['Peso'].astype(str).str.replace(',', '.').str.replace(' ', ''), errors='coerce') > 150]
+        ```
+        
+        REGOLE TASSATIVE:
+        1. NON INVENTARE FILTRI. Estrai colonna e numero SOLO dalla "Richiesta dell'utente".
+        2. Salva SEMPRE il risultato finale nella variabile 'df_risultato'.
+        3. Forza sempre la conversione con pd.to_numeric come mostrato nell'esempio.
+        4. Restituisci SOLO il codice dentro i backtick, nessuna parola extra.
         """
         
         risposta_llm = llm.invoke(prompt)
