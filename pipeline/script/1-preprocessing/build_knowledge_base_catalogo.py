@@ -16,28 +16,29 @@ class CatalogoToDocuments:
     def _extract_parametri(self, row):
         parametri = {}
         for col in self.df.columns:
-            if col.endswith(" unit") or col in ["Pagina_PDF", "Modello PAL"]:
+            # Ignora le colonne descrittive per non mischiarle coi numeri
+            if col in ["Pagina_PDF", "Modello Prodotto", "Grandezza Telaio"]:
                 continue
-            unit_col = f"{col} unit"
-            if unit_col in self.df.columns:
-                valore = row[col]
-                unita = row[unit_col]
-                if pd.notna(valore) and pd.notna(unita):
-                    parametri[col] = {"valore": valore, "unita": str(unita).strip()}
+            
+            valore = row[col]
+            # Se la cella non è vuota, aggiungila
+            if pd.notna(valore) and str(valore).strip() != "":
+                # Lasciamo "unita" vuoto perché l'unità di misura è già nel nome della colonna!
+                parametri[col] = {"valore": valore, "unita": ""}
         return parametri
     
     # formatta parametri in stringa leggibile
     def _create_description(self, parametri):
         parts = []
         for nome, data in parametri.items():
-            nome_clean = nome.replace("_", " ").title()
-            parts.append(f"{nome_clean}: {data['valore']} {data['unita']}")
+            nome_clean = nome.replace("_", " ")
+            parts.append(f"{nome_clean}: {data['valore']}")
         return " | ".join(parts)
     
     # itera su ogni riga e crea un documento langchain
     def transform(self):
         for idx, row in self.df.iterrows():
-            modello_id = row.get("Modello PAL", f"MOD_{idx}")
+            modello_id = row.get("Modello Prodotto", f"MOD_{idx}")
             pagina = row.get("Pagina_PDF", 1)
             parametri = self._extract_parametri(row)
             descrizione = self._create_description(parametri)
@@ -102,18 +103,18 @@ if __name__ == "__main__":
     
     cartella_corrente = os.path.dirname(os.path.abspath(__file__))
 
-    excel_path = os.path.join(cartella_corrente, "..", "..", "data", "1-preprocessing", "catalogo.xlsx")
+    csv_path = os.path.join(cartella_corrente, "..", "..", "data", "1-preprocessing", "catalogo_sintetico_completo.csv")
 
     persist_dir = os.path.join(cartella_corrente, "..", "..", "data", "2-processing", "chroma_db_catalogo")
 
     metadata_path = os.path.join(cartella_corrente, "..", "..", "data", "1-preprocessing", "metadata_catalogo.json")
 
     try:
-        print("caricamento excel...")
-        if not os.path.exists(excel_path):
-            raise FileNotFoundError(f"file non trovato: {excel_path}")
+        print("caricamento csv...")
+        if not os.path.exists(csv_path):
+            raise FileNotFoundError(f"file non trovato: {csv_path}")
         
-        df = pd.read_excel(excel_path)
+        df = pd.read_csv(csv_path, encoding='latin1', sep=';', decimal=',', thousands='.')
         print(f"ok: {len(df)} modelli, {len(df.columns)} colonne\n")
         
         print("trasformazione documenti...")
