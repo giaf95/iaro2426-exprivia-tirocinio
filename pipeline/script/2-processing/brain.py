@@ -1,4 +1,5 @@
 import os
+import sys
 import sqlite3
 import time
 import pandas as pd
@@ -8,13 +9,19 @@ import time
 from typing import Annotated, List, TypedDict
 import operator
 from langgraph.graph import StateGraph, END
-from langchain_ollama import ChatOllama
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 import plotly.express as px
+
+# aggiunge la root del progetto al path per importare config.py
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_pipeline_dir = os.path.dirname(os.path.dirname(_script_dir))
+sys.path.insert(0, _pipeline_dir)
+from config import CATALOGO_PATH, GOOGLE_API_KEY
 
 class AgentState(TypedDict):
     messages: Annotated[List, operator.add]
@@ -68,15 +75,14 @@ def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
 
 @tool
 def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
-    """Usa questo tool SEMPRE e SOLO quando l'utente nomina un MODELLO SPECIFICO (es. '091-051' o '061-035').
-    ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - modello: estrai SOLO il codice esatto (es. '091-051').
-    - parametro: la grandezza fisica da cercare (es. 'Portata Massima Mandata')."""
+    """Usa questo tool quando l'utente nomina un modello specifico (es. '091-051' o '061-035').
+    - modello: il codice esatto del modello (es. '091-051').
+    - parametro: la grandezza fisica da cercare (es. 'Portata Massima Mandata'). Se l'utente non la specifica, chiedigliela prima di chiamare questo tool."""
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_SPECIFICO")
     print(f"[TOOL] Ricerca chirurgica -> Modello: '{modello}' | Parametro: '{parametro}'")
     
     if df_catalogo is None:
-        return "Errore: file Excel non caricato."
+        return "Errore: file catalogo non caricato."
     
     # pulizia del codice cercato
     codice_pulito = modello.upper().replace("MODELLO", "").strip()
@@ -85,18 +91,18 @@ def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
     df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
     
     if df_modello.empty:
-        return f"Modello {codice_pulito} non trovato nel catalogo Excel."
+        return f"Modello {codice_pulito} non trovato nel catalogo."
         
     # salvagente anti-crash se l'AI dimentica il parametro
     if parametro == "Tutti" or parametro.strip() == "":
-         return f"Hai trovato il modello {codice_pulito}, ma non hai estratto il parametro richiesto! Chiedi all'utente cosa vuole sapere di preciso (es. dimensioni, peso, portata)."
+         return f"Modello {codice_pulito} trovato. Chiedi all'utente quale parametro vuole conoscere (es. dimensioni, peso, portata)."
          
     # cerca le colonne che contengono la parola richiesta
     richiesta_pulita = parametro.lower().strip()
     colonne_trovate = [col for col in colonne_catalogo if richiesta_pulita in str(col).lower()]
     
     if not colonne_trovate:
-         return f"Il parametro '{parametro}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
+         return f"Il parametro '{parametro}' non esiste nel catalogo. Chiedi all'utente di specificare meglio."
          
     # estrae tutti i parametri trovati
     risultati = []
@@ -108,18 +114,16 @@ def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
 
 @tool
 def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decrescente", top_n: int = 3, valore_target: float = None) -> str:
-    """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo.
-    REGOLA FONDAMENTALE: Usa SOLO i parametri richiesti.
-    PARAMETRI:
-    - 'parametro_richiesto': Inserisci ESATTAMENTE il nome della colonna.
-    - 'ordinamento': 'crescente' o 'decrescente'.
-    - 'top_n': il numero di modelli da restituire.
-    - 'valore_target': (OPZIONALE) Se l'utente o il Calcolatore ti chiedono un modello per coprire un certo fabbisogno in kW, inserisci qui il numero. Il tool filtrerà i modelli adatti."""
+    """Usa questo tool per domande analitiche e comparative sul catalogo (es. 'quali modelli hanno la portata maggiore').
+    - parametro_richiesto: nome della colonna da analizzare, il piu vicino possibile al nome reale.
+    - ordinamento: 'crescente' o 'decrescente'.
+    - top_n: numero di modelli da restituire.
+    - valore_target: (opzionale) filtra i modelli con valore uguale o superiore a questo numero."""
     print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
     print(f"[TOOL] Estrazione -> Parametro: '{parametro_richiesto}', Ordine: '{ordinamento}', Top: {top_n}")
 
     if df_catalogo is None:
-        return "Errore: file Excel non caricato."
+        return "Errore: file catalogo non caricato."
 
     # rimuove i finti trattini bassi che l'llm inventa spesso
     richiesta_esatta = parametro_richiesto.replace('_', ' ').strip().lower()
@@ -248,7 +252,7 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
 @tool
 def cerca_sito_web(query: str) -> str:
     """Usa questo tool per cercare procedure passo-passo, guide all'installazione, troubleshooting e codici di errore.
-    REGOLA FERREA: Usa un UNICO parametro stringa chiamato 'query' contenente le parole chiave."""
+    - query: parole chiave della ricerca."""
     print(f"[TOOL] Query in ingresso: '{query}'")
     
     if not db_web:
@@ -261,9 +265,9 @@ def cerca_sito_web(query: str) -> str:
 
 @tool
 def cerca_manuali(query: str) -> str:
-    """Usa questo tool per trovare informazioni commerciali, contatti, o AMBIENTI DI APPLICAZIONE (es. sale operatorie, ospedali, uso industriale).
-    QUANDO NON USARLO: Non usarlo per cercare dati tecnici numerici o modelli.
-    REGOLA FERREA: Usa un UNICO parametro stringa chiamato 'query'."""
+    """Usa questo tool per trovare informazioni commerciali, contatti, o ambienti di applicazione (es. sale operatorie, ospedali, uso industriale).
+    Non usarlo per dati tecnici numerici o modelli specifici.
+    - query: parole chiave della ricerca."""
     print(f"\n[TOOL] Esecuzione CERCA_MANUALI")
     print(f"[TOOL] Query in ingresso: '{query}'")
     
@@ -278,13 +282,12 @@ def cerca_manuali(query: str) -> str:
 @tool
 def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna: float, temp_interna: float, tipo_locale: str) -> str:
     """Usa questo tool per calcolare i kW necessari per condizionare una stanza.
-    DIVIETO ASSOLUTO: NON INVENTARE LE TEMPERATURE. Se l'utente non ti ha scritto esplicitamente quanti gradi ci sono fuori e quanti ne vuole dentro, FERMATI E CHIEDILI.
-    PARAMETRI:
+    Non chiamare questo tool se l'utente non ha fornito esplicitamente tutti e quattro i valori numerici (mq, persone, temp. esterna, temp. interna).
     - area_mq: metri quadri della stanza.
     - numero_persone: quante persone occupano la stanza.
     - temp_esterna: temperatura in gradi all'esterno (es. 35).
     - temp_interna: temperatura desiderata all'interno (es. 22).
-    - tipo_locale: es. 'discoteca', 'ufficio', 'ristorante', ecc."""
+    - tipo_locale: es. 'discoteca', 'ufficio', 'ristorante'."""
     print(f"\n[TOOL] Esecuzione CALCOLA_FABBISOGNO_TERMICO")
     
     # faccio calcolare il Delta T a Python, non all'AI
@@ -321,17 +324,16 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna
 @tool
 def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str = "") -> str:
     """Usa questo tool per calcolare il fabbisogno di ventilazione (m3/h).
-    REGOLA ANTI-INVENZIONE: Se l'utente NON ti ha scritto i numeri esatti nel messaggio, DEVI passare 0 (zero). Se non sai il tipo di locale, non inventarlo e lascia la stringa vuota "".
-    PARAMETRI:
+    Non chiamare questo tool se l'utente non ha fornito esplicitamente i valori numerici: passa 0 se un dato non e' disponibile.
     - area_mq: metri quadri (inserisci 0 se non forniti).
-    - numero_persone: quantità di persone (inserisci 0 se non fornite).
-    - tipo_locale: es. 'scuola', 'palestra', 'ufficio'. (lascia "" se non lo sai)."""
+    - numero_persone: quantita' di persone (inserisci 0 se non fornite).
+    - tipo_locale: es. 'scuola', 'palestra', 'ufficio'. (lascia "" se non specificato)."""
     print(f"\n[TOOL] Esecuzione CALCOLA_PORTATA_ARIA")
     
     #guardrail (Numeri)
     if area_mq <= 0 or numero_persone <= 0:
         print("[TOOL] Dati numerici mancanti rilevati. Blocco dell'esecuzione.")
-        return "ISTRUZIONE PER L'AI: Dati incompleti. FERMATI e NON usare il catalogo generico. Rispondi all'utente chiedendo di fornirti i metri quadri e il numero di persone."
+        return "ISTRUZIONE PER L'AI: Dati incompleti. Fermati e chiedi all'utente i metri quadri e il numero di persone."
 
     #guardrail (Testo / Amnesia)
     if not tipo_locale or tipo_locale.strip() == "":
@@ -366,10 +368,9 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
 
 @tool
 def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) -> str:
-    """Usa questo tool per calcolare il consumo elettrico (kW assorbiti) di uno o più modelli.
-    PARAMETRI:
-    - codici_modelli: i codici dei modelli da analizzare. Se l'utente chiede un confronto tra più modelli, inseriscili tutti separati da virgola (es. 'modelloA, modelloB').
-    - kw_richiesti: (Opzionale) Estrai il numero di kW dal messaggio dell'utente. Se non specificato, lascia 0.0."""
+    """Usa questo tool per calcolare il consumo elettrico (kW assorbiti) di uno o piu modelli.
+    - codici_modelli: i codici dei modelli da analizzare. Per piu modelli, separali con virgola (es. 'modelloA, modelloB').
+    - kw_richiesti: (opzionale) kW specificati dall'utente. Se non indicati, lascia 0.0."""
     print(f"\n[TOOL] Esecuzione CALCOLA_CONSUMO_ELETTRICO -> Modelli: {codici_modelli} | Input kW: {kw_richiesti}")
 
     if df_catalogo is None:
@@ -440,10 +441,9 @@ def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) ->
 
 @tool
 def verifica_prevalenza_canali(codici_modelli: str, pascal_persi_impianto: float = 0.0) -> str:
-    """Usa questo tool per verificare se la ventola del modello ha abbastanza forza (prevalenza) per superare la perdita di carico dei canali dell'utente.
-    PARAMETRI:
-    - codici_modelli: i codici dei modelli separati da virgola (es. '061-035, 091-051').
-    - pascal_persi_impianto: estrai il numero associato alle parole 'Pascal', 'Pa' o 'perdita di carico' nel messaggio dell'utente (es. 250.0). Se non specificato, lascia 0.0."""
+    """Usa questo tool per verificare se la ventola del modello ha abbastanza prevalenza per superare la perdita di carico dei canali.
+    - codici_modelli: codici dei modelli separati da virgola (es. '061-035, 091-051').
+    - pascal_persi_impianto: valore in Pascal associato alle parole 'Pascal', 'Pa' o 'perdita di carico' nel messaggio. Se non specificato, lascia 0.0."""
     print(f"\n[TOOL] Esecuzione VERIFICA_PREVALENZA -> Modelli: {codici_modelli} | Pascal: {pascal_persi_impianto}")
 
     if df_catalogo is None:
@@ -509,10 +509,9 @@ def verifica_prevalenza_canali(codici_modelli: str, pascal_persi_impianto: float
 
 @tool
 def consulta_dizionario_catalogo(parola_chiave: str) -> str:
-    """Usa questo tool SOLO per spiegare il SIGNIFICATO di termini tecnici o acronimi (es. 'EER', 'prevalenza').
-    DIVIETO ASSOLUTO: VIETATO usare questo tool se l'utente nomina un MODELLO SPECIFICO (es. '091-051'). Per i modelli usa 'cerca_catalogo_specifico'.
-    ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - parola_chiave: la parola da cercare. OBBLIGATORIO."""
+    """Usa questo tool per spiegare il significato di termini tecnici o acronimi (es. 'EER', 'prevalenza', 'portata').
+    Non usarlo se l'utente ha gia fornito un codice modello specifico: in quel caso usa 'cerca_catalogo_specifico'.
+    - parola_chiave: il termine da cercare."""
     print(f"\n[TOOL] Esecuzione CONSULTA_DIZIONARIO -> Ricerca: '{parola_chiave}'")
 
     # Percorso relativo sicuro
@@ -549,12 +548,11 @@ dati_visivi_temporanei = None
 
 @tool
 def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "grafico", top_n: int = 5) -> str:
-    """Usa questo tool SOLO SE l'utente scrive ESPLICITAMENTE le parole 'grafico', 'diagramma' o 'tabella'.
-    DIVIETO ASSOLUTO: Se l'utente fa una ricerca normale (es. 'quali macchine...', 'mostrami i modelli...'), NON ESSERE PROATTIVO per abbellire la risposta: ti è VIETATO usare questo tool. Usa 'cerca_catalogo_generico'.
-    ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - parametro_asse_y: Inserisci ESATTAMENTE il nome della colonna da analizzare.
-    - tipo_visualizzazione: Scrivi "grafico" se l'utente chiede un grafico/diagramma. Scrivi "tabella" se chiede una tabella.
-    - top_n: il numero di modelli da mostrare."""
+    """Usa questo tool solo se l'utente scrive esplicitamente le parole 'grafico', 'diagramma' o 'tabella'.
+    Per ricerche normali usa 'cerca_catalogo_generico'.
+    - parametro_asse_y: nome esatto della colonna da analizzare.
+    - tipo_visualizzazione: 'grafico' o 'tabella'.
+    - top_n: numero di modelli da mostrare."""
     global dati_visivi_temporanei
     print(f"\n[TOOL] Esecuzione PREPARA_DATI_GRAFICO -> Asse Y: {parametro_asse_y} | Tipo: {tipo_visualizzazione}")
 
@@ -604,7 +602,7 @@ def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "gra
 
 @tool 
 def estrai_dati_dinamici(richiesta_utente: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di elaborare i dati in modo complesso o estrarre file personalizzati dal catalogo."""
+    """Usa questo tool quando l'utente chiede di elaborare i dati in modo complesso o estrarre file personalizzati dal catalogo."""
     global df_catalogo, llm
     print(f"\n[TOOL] Esecuzione ESTRAI_DATI_DINAMICI -> Richiesta: '{richiesta_utente}'")
     
@@ -663,7 +661,7 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
 
 @tool
 def genera_grafico_avanzato(richiesta_utente: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente ti chiede di generare un grafico."""
+    """Usa questo tool quando l'utente chiede di generare un grafico."""
     global llm, dati_visivi_temporanei
     print(f"\n[TOOL] Esecuzione GENERA_GRAFICO_AVANZATO -> Richiesta: '{richiesta_utente}'")
     
@@ -761,7 +759,7 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 
 5. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
 - Se nella richiesta è presente un codice modello esatto (es. 091-051), usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
-- È ASSOLUTAMENTE VIETATO usare 'consulta_dizionario_catalogo' se la domanda contiene il codice di un modello.
+- Non usare 'consulta_dizionario_catalogo' se la domanda contiene il codice di un modello.
 
 6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
 - Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
@@ -771,22 +769,22 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 
 8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o una TABELLA visiva:
 - Usa il tool 'prepara_dati_grafico' SOLO E SOLTANTO SE l'utente ha scritto testualmente una di queste tre parole.
-- NON usare questo tool di tua iniziativa per "abbellire" i risultati. Per le ricerche normali sei OBBLIGATO a usare sempre 'cerca_catalogo_generico'.
+- Per le ricerche normali usa sempre 'cerca_catalogo_generico'.
 
 9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati per Python":
-- Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente in modo che possa generare il codice corretto.
+- Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente.
 
-10. IF l'utente chiede di creare un GRAFICO, un DIAGRAMMA o PLOTTARE i dati che sono appena stati estratti o filtrati nel CSV:
+10. IF l'utente chiede di creare un GRAFICO o PLOTTARE i dati che sono stati estratti nel CSV:
 - Usa il tool 'genera_grafico_avanzato' passando la frase intera dell'utente.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
 - NON inventare parametri. Se non li sai, chiedili.
 - DIVIETO DI CALCOLO A VUOTO: Se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
-- DIVIETO DI JSON: È severamente vietato rispondere mostrando codice JSON grezzo all'utente.
-- DIVIETO CHIAMATE MULTIPLE: Ti è ASSOLUTAMENTE VIETATO chiamare due tool contemporaneamente. Scegli UN SOLO tool alla volta, attendi il risultato, e poi rispondi all'utente.
-- REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da QUALSIASI tool, ti è ASSOLUTAMENTE VIETATO richiamare lo stesso tool o chiamarne altri per fare verifiche extra. Devi IMMEDIATAMENTE formulare la risposta discorsiva per l'utente, basandoti sui dati estratti, e fermarti.
-- REGOLA DI PRIVACY: Ti è ASSOLUTAMENTE VIETATO menzionare nomi di cartelle, percorsi di file o dettagli del sistema operativo (es. "tirocinio", "exprivia", "C:/Users...") nelle tue risposte. Limitati esclusivamente ai dati tecnici del catalogo.""")
+- DIVIETO DI JSON: Non rispondere mai mostrando codice JSON grezzo all'utente.
+- DIVIETO CHIAMATE MULTIPLE: Chiama UN SOLO tool alla volta, attendi il risultato, poi rispondi.
+- REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da qualsiasi tool, formula IMMEDIATAMENTE la risposta discorsiva per l'utente e fermati. Non richiamare lo stesso tool o altri tool per verifiche extra.
+- REGOLA DI PRIVACY: Non menzionare mai nomi di cartelle, percorsi di file o dettagli del sistema operativo nelle tue risposte.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
@@ -852,11 +850,11 @@ db_web = carica_database("chroma_db_zoppellaro", "sito_web", embeddings_model)
 db_manuali = carica_database("chroma_db_knowledge_base_pdf", "manuali", embeddings_model)
 
 try:
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
-    excel_path = os.path.join(pipeline_dir, "data", "1-preprocessing", "catalogo.xlsx")
-    # i parametri in read_excel risolvono il problema dei punti usati come migliaia
-    df_catalogo = pd.read_excel(excel_path, thousands='.', decimal=',')
+    # usa CATALOGO_PATH da config.py — supporta sia .xlsx che .csv
+    if CATALOGO_PATH.endswith('.csv'):
+        df_catalogo = pd.read_csv(CATALOGO_PATH, thousands='.', decimal=',')
+    else:
+        df_catalogo = pd.read_excel(CATALOGO_PATH, thousands='.', decimal=',')
 
     # pulisce le colonne per nascondere quelle inutili con le unita di misura
     colonne_catalogo = []
@@ -865,7 +863,8 @@ try:
         if not colonna_stringa.endswith("unit"):
             colonne_catalogo.append(col)
             
-except Exception:
+except Exception as e:
+    print(f"Errore caricamento catalogo da '{CATALOGO_PATH}': {e}")
     df_catalogo = None
     colonne_catalogo = []
 
@@ -882,8 +881,11 @@ tools = [#cerca_catalogo_specifico,
          genera_grafico_avanzato]
 
 # configurazione LangGraph e LLM
-# parametri aggiunti per limitare i consumi della cpu e della ram
-llm = ChatOllama(model="qwen2.5:7b-instruct-q4_K_M", temperature=0, num_thread=4, num_ctx=1536)
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.0-flash",
+    temperature=0,
+    google_api_key=GOOGLE_API_KEY
+)
 llm_con_tools = llm.bind_tools(tools)
 
 tool_node = ToolNode(tools)
