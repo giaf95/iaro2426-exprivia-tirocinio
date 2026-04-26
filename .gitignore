@@ -5,3 +5,4 @@ pipeline/data/3-user_interface/database_chat.db
 pipeline/script/2-processing/__pycache__
 pipeline/data/3-user_interface/grafici_salvati
 pipeline/data/3-user_interface/dataframe_grafico.csv
+.env
