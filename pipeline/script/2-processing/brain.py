@@ -17,10 +17,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 import plotly.express as px
 
-# aggiunge la root del progetto al path per importare config.py
+# aggiunge la cartella script al path per importare config.py
 _script_dir = os.path.dirname(os.path.abspath(__file__))
-_pipeline_dir = os.path.dirname(os.path.dirname(_script_dir))
-sys.path.insert(0, _pipeline_dir)
+_cartella_script = os.path.dirname(_script_dir)
+sys.path.insert(0, _cartella_script)
 from config import CATALOGO_PATH, GOOGLE_API_KEY
 
 class AgentState(TypedDict):
