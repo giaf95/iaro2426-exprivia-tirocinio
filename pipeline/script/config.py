@@ -22,3 +22,11 @@ CATALOGO_PATH = os.path.join(DATA_DIR, '1-preprocessing', NOME_CATALOGO)
 DB_CHAT_PATH = os.path.join(DATA_DIR, '3-user_interface', 'database_chat.db')
 CSV_GRAFICI_PATH = os.path.join(DATA_DIR, '3-user_interface', 'dataframe_grafico.csv')
 DIR_GRAFICI_SALVATI = os.path.join(DATA_DIR, '3-user_interface', 'grafici_salvati')
+
+# Controlliamo se dotenv ha caricato il file
+esito_caricamento = load_dotenv(dotenv_path=ENV_PATH)
+
+if not GOOGLE_API_KEY:
+    print(f"\n[ALLARME ROSSO] Chiave API non trovata!")
+    print(f"Esito lettura file .env: {esito_caricamento}")
+    print(f"Percorso: {ENV_PATH}\n")
