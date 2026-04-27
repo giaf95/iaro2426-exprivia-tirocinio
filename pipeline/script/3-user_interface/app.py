@@ -324,6 +324,8 @@ if user_query:
                 response = elabora_richiesta(user_query, chat_id=id_chat_corrente)
                 
                 st.write(response["testo"])
+                if "SUCCESSO: Dati estratti e salvati" in response["testo"]:
+                    st.success("CSV creato correttamente.")
                 if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
                     

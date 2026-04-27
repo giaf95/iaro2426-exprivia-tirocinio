@@ -21,7 +21,7 @@ import plotly.express as px
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 _cartella_script = os.path.dirname(_script_dir)
 sys.path.insert(0, _cartella_script)
-from config import CATALOGO_PATH, GOOGLE_API_KEY
+from config import CATALOGO_PATH, GOOGLE_API_KEY, CSV_GRAFICI_PATH
 
 class AgentState(TypedDict):
     messages: Annotated[List, operator.add]
@@ -612,35 +612,46 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
-        cartella_destinazione = os.path.join(pipeline_dir, 'data', '3-user_interface')
+        cartella_destinazione = os.path.dirname(CSV_GRAFICI_PATH)
         os.makedirs(cartella_destinazione, exist_ok=True)
-        path_salvataggio = os.path.join(cartella_destinazione, 'dataframe_grafico.csv')
+        path_salvataggio = CSV_GRAFICI_PATH 
         
         df_lavoro = df_catalogo.copy()
         df_lavoro.columns = df_lavoro.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
         colonne_reali = list(df_lavoro.columns)
         
         prompt = f"""
-        Scrivi un filtro Pandas in base a questa richiesta: '{richiesta_utente}'
-        
-        Lista esatta delle colonne del dataframe 'df': {colonne_reali}
-        
-        COMPILA QUESTO TEMPLATE ESATTO sostituendo solo le 3 variabili in MAIUSCOLO:
-        
+        Scrivi un filtro Pandas in base a questa richiesta:
+        {richiesta_utente}
+
+        Lista esatta delle colonne del dataframe df:
+        {colonne_reali}
+
+        COMPILA QUESTO TEMPLATE ESATTO sostituendo solo NOMECOLONNA, SEGNO e NUMERO:
+
         ```python
-        df_risultato = df[pd.to_numeric(df['NOME_COLONNA'].astype(str).str.replace(',', '.').str.replace(' ', ''), errors='coerce') SEGNO NUMERO]
+        dfrisultato = df[pd.to_numeric(df["NOMECOLONNA"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False), errors="coerce") SEGNO NUMERO]
         ```
-        
+
         REGOLE DI COMPILAZIONE:
-        1. [NOME_COLONNA]: Trova il nome nella lista fornita che corrisponde alla richiesta. Copialo IN MODO IDENTICO (incluso se inizia con un numero, es. '1 Prevalenza...').
-        2. [SEGNO]: Usa >, <, >=, <=, o ==.
-        3. [NUMERO]: Usa il numero scritto nella richiesta (es. 900). VIETATO inventare numeri.
-        4. Restituisci SOLO ed ESCLUSIVAMENTE la riga di codice compilata dentro i backtick.
+        1. NOMECOLONNA deve essere una delle colonne presenti nella lista.
+        2. SEGNO deve essere uno tra >, >=, <, <=, ==.
+        3. NUMERO deve essere preso dalla richiesta utente.
+        4. Non aggiungere spiegazioni.
+        5. Restituisci solo codice Python valido, preferibilmente dentro un blocco ```python.
         """
         
         risposta_llm = llm.invoke(prompt)
-        match = re.search(r"```python\n(.*?)\n```", risposta_llm.content, re.DOTALL)
-        codice_pulito = match.group(1).strip() if match else risposta_llm.content.strip()
+
+        contenuto = risposta_llm.content.strip()
+        match = re.search(r"```python\s*(.*?)\s*```", contenuto, re.DOTALL)
+        if match:
+            codice_pulito = match.group(1).strip()
+        else:
+            codice_pulito = contenuto
+
+        if codice_pulito.startswith("python"):
+            codice_pulito = codice_pulito[len("python"):].strip()
             
         print(f"\n[DEBUG LLM] Codice Pandas generato:\n{codice_pulito}\n")
     
@@ -669,7 +680,7 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
         # Legge dal path dove estrai_dati_dinamici ha salvato il file
-        csv_path = os.path.join(pipeline_dir, 'data', '3-user_interface', 'dataframe_grafico.csv')
+        csv_path = CSV_GRAFICI_PATH
         
         if not os.path.exists(csv_path):
             return "ERRORE: File dataframe_grafico.csv non trovato in data/3-user_interface."
@@ -850,19 +861,45 @@ db_web = carica_database("chroma_db_zoppellaro", "sito_web", embeddings_model)
 db_manuali = carica_database("chroma_db_knowledge_base_pdf", "manuali", embeddings_model)
 
 try:
-    # usa CATALOGO_PATH da config.py — supporta sia .xlsx che .csv
-    if CATALOGO_PATH.endswith('.csv'):
-        df_catalogo = pd.read_csv(CATALOGO_PATH, thousands='.', decimal=',')
+    if not os.path.exists(CATALOGO_PATH):
+        print(f"Errore caricamento catalogo da '{CATALOGO_PATH}': file non trovato")
+        df_catalogo = None
+        colonne_catalogo = []
     else:
-        df_catalogo = pd.read_excel(CATALOGO_PATH, thousands='.', decimal=',')
+        if CATALOGO_PATH.lower().endswith(".xlsx"):
+            df_catalogo = pd.read_excel(CATALOGO_PATH)
+        else:
+            try:
+                df_catalogo = pd.read_csv(
+                    CATALOGO_PATH,
+                    sep=None,
+                    engine="python",
+                    encoding="utf-8"
+                )
+            except UnicodeDecodeError:
+                df_catalogo = pd.read_csv(
+                    CATALOGO_PATH,
+                    sep=None,
+                    engine="python",
+                    encoding="latin-1"
+                )
 
-    # pulisce le colonne per nascondere quelle inutili con le unita di misura
-    colonne_catalogo = []
-    for col in df_catalogo.columns:
-        colonna_stringa = str(col).strip().lower()
-        if not colonna_stringa.endswith("unit"):
-            colonne_catalogo.append(col)
-            
+        df_catalogo.columns = (
+            df_catalogo.columns
+            .astype(str)
+            .str.replace(r"\s+", " ", regex=True)
+            .str.strip()
+        )
+
+        colonne_catalogo = []
+        for col in df_catalogo.columns:
+            colonna_stringa = str(col).strip().lower()
+            if not colonna_stringa.endswith("unit"):
+                colonne_catalogo.append(col)
+
+        print(f"[CATALOGO] File caricato: {CATALOGO_PATH}")
+        print(f"[CATALOGO] Righe: {len(df_catalogo)} | Colonne: {len(colonne_catalogo)}")
+
 except Exception as e:
     print(f"Errore caricamento catalogo da '{CATALOGO_PATH}': {e}")
     df_catalogo = None
