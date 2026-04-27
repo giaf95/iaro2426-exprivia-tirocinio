@@ -345,38 +345,41 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna
     - temp_interna: temperatura desiderata all'interno (es. 22).
     - tipo_locale: es. 'discoteca', 'ufficio', 'ristorante'."""
     print(f"\n[TOOL] Esecuzione CALCOLA_FABBISOGNO_TERMICO")
-    
-    # faccio calcolare il Delta T a Python, non all'AI
+
+    if area_mq <= 0 or numero_persone < 0:
+        return "ISTRUZIONE PER L'AI: Dati incompleti o non validi. Chiedi all'utente metri quadri e numero persone corretti."
+
     delta_t = abs(temp_esterna - temp_interna)
     print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} persone, T.Est: {temp_esterna}°, T.Int: {temp_interna}° (Delta: {delta_t}°), locale: {tipo_locale}")
 
-    # 1. Carico Base Strutturale (W/mq)
-    w_mq = 100 # Default per residenziale/uffici
-    tipo_locale_low = tipo_locale.lower()
+    w_mq = 100
+    tipo_locale_low = str(tipo_locale).lower()
     if "discoteca" in tipo_locale_low or "palestra" in tipo_locale_low or "industria" in tipo_locale_low:
         w_mq = 150
 
     carico_base = area_mq * w_mq
 
-    # 2. Carico Persone (W/persona) - a riposo emettono meno, in discoteca/palestra emettono molto calore
     w_persona = 100
     if "discoteca" in tipo_locale_low or "palestra" in tipo_locale_low:
         w_persona = 250
 
     carico_persone = numero_persone * w_persona
 
-    # 3. Moltiplicatore Delta T (aumenta del 5% per ogni grado di sbalzo termico oltre i 10°C)
     moltiplicatore_delta = 1.0
     if delta_t > 10:
         gradi_extra = delta_t - 10
         moltiplicatore_delta = 1.0 + (gradi_extra * 0.05)
 
-    # Calcolo Finale
     fabbisogno_totale_watt = (carico_base + carico_persone) * moltiplicatore_delta
     fabbisogno_kw = fabbisogno_totale_watt / 1000
 
-    return f"Calcolo completato: {fabbisogno_kw:.2f} kW. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Inserisci come parametro_richiesto ESATTAMENTE 'Potenza frigorifera totale macchina' e inserisci {fabbisogno_kw:.2f} nel campo 'valore_target'."
-
+    return (
+        f"Calcolo completato: {fabbisogno_kw:.2f} kW. "
+        f"ISTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. "
+        f"Inserisci come parametro_richiesto ESATTAMENTE 'Potenza frigorifera totale macchina' "
+        f"e inserisci {fabbisogno_kw:.2f} nel campo 'valore_target'."
+    )
+    
 @tool
 def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str = "") -> str:
     """Usa questo tool per calcolare il fabbisogno di ventilazione (m3/h).
