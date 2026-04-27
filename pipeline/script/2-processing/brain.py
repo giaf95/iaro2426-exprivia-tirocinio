@@ -655,14 +655,22 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
             
         print(f"\n[DEBUG LLM] Codice Pandas generato:\n{codice_pulito}\n")
     
-        scatola_sicura = {"pd": pd, "df": df_lavoro, "df_risultato": None}
+        scatola_sicura = {
+            "pd": pd,
+            "df": df_lavoro,
+            "df_risultato": None,
+            "dfrisultato": None
+        }
         exec(codice_pulito, {}, scatola_sicura)
+
         df_finale = scatola_sicura.get("df_risultato")
-        
+        if df_finale is None:
+            df_finale = scatola_sicura.get("dfrisultato")
+
         if df_finale is not None and isinstance(df_finale, pd.DataFrame):
             df_finale.to_csv(path_salvataggio, index=False)
             return "SUCCESSO: Dati estratti e salvati in data/3-user_interface/dataframe_grafico.csv"
-        
+
         return "ERRORE: Generazione dataframe fallita."
         
     except PermissionError:
