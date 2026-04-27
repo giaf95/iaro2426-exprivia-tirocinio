@@ -838,7 +838,7 @@ def route_after_tool(state: AgentState) -> str:
 memoria_conversazioni = {}
 
 def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
-    global memoria_conversazioni
+    global memorie_conversazioni, llm, llm_con_tools, app
 
     if chat_id not in memoria_conversazioni:
         istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico HVAC. Devi rispettare RIGOROSAMENTE questo albero decisionale (IF/THEN):
@@ -916,8 +916,6 @@ REGOLE GLOBALI:
         print(f"[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
 
     except Exception as e:
-        global llm, llm_con_tools, app
-
         if errore_quota_google(e):
             print(f"[LLM] Quota esaurita sulla chiave corrente: {e}")
 
