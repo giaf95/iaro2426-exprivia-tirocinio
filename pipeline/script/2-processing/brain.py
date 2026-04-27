@@ -17,9 +17,11 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 import plotly.express as px
 
-# aggiunge la root del progetto al path per importare config.py
-_script_dir = os.path.dirname(os.path.abspath(__file__))
-_pipeline_dir = os.path.dirname(os.path.dirname(_script_dir))
+# aggiunge pipeline/ al path per importare config.py
+# struttura: pipeline/script/2-processing/brain.py -> risale a pipeline/
+_script_dir = os.path.dirname(os.path.abspath(__file__))   # pipeline/script/2-processing
+_scripts_dir = os.path.dirname(_script_dir)                # pipeline/script
+_pipeline_dir = os.path.dirname(_scripts_dir)              # pipeline/
 sys.path.insert(0, _pipeline_dir)
 from config import CATALOGO_PATH, GOOGLE_API_KEY
 
