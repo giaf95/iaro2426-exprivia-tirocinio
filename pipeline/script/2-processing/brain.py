@@ -515,60 +515,46 @@ def verifica_prevalenza_canali(codici_modelli: str, pascal_persi_impianto: float
     if not codici_modelli or codici_modelli.strip() == "":
         return "Dati incompleti. Chiedi all'utente il codice del modello."
 
-    # pulisce la stringa base
-    stringa_pulita = codici_modelli.lower().replace(' e ', ',').replace(' o ', ',').replace(' oppure ', ',')
-    
-    # divide i modelli senza usare list comprehension
-    parti = stringa_pulita.split(',')
-    lista_codici = []
-    for p in parti:
-        if p.strip() != "":
-            lista_codici.append(p.strip())
+    colonna_modello = trova_colonna_modello()
+    if not colonna_modello:
+        return "Errore: impossibile trovare la colonna del modello nel catalogo."
+
+    col_prevalenza = trova_colonna_esatta_o_simile("Prevalenza Massima Mandata", colonne_catalogo)
+    if not col_prevalenza:
+        col_prevalenza = trova_colonna_esatta_o_simile("1 Pressione Massima", colonne_catalogo)
+
+    if not col_prevalenza:
+        return "Errore: impossibile trovare la colonna della prevalenza nel catalogo."
+
+    stringa_pulita = codici_modelli.lower().replace(" e ", ",").replace(" o ", ",").replace(" oppure ", ",")
+    lista_codici = [p.strip() for p in stringa_pulita.split(",") if p.strip() != ""]
 
     risultati_finali = []
 
-    # controlla ogni singolo modello
     for codice_singolo in lista_codici:
         codice_pulito = codice_singolo.upper().replace("MODELLO", "").strip()
-        df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
+        df_modello = df_catalogo[df_catalogo[colonna_modello].astype(str).str.upper().str.contains(codice_pulito, na=False)]
 
         if df_modello.empty:
             risultati_finali.append(f"Modello {codice_pulito} non trovato.")
             continue
 
-        # cerca la colonna della prevalenza
-        col_prevalenza = ""
-        for col in colonne_catalogo:
-            if 'prevalenza massima mandata' in str(col).lower():
-                col_prevalenza = col
-                break
+        valore_prev = df_modello.iloc[0].get(col_prevalenza, None)
+        prev_float = converti_serie_numerica(pd.Series([valore_prev])).iloc[0]
 
-        if col_prevalenza == "":
-            risultati_finali.append(f"Modello {codice_pulito}: impossibile trovare i dati di prevalenza.")
+        if pd.isna(prev_float):
+            risultati_finali.append(f"Modello {codice_pulito}: impossibile leggere il valore di prevalenza.")
             continue
 
-        valore_prev = df_modello.iloc[0].get(col_prevalenza, 0)
-        
-        try:
-            prev_float = float(str(valore_prev).replace(',', '.'))
-        except:
-            prev_float = 0.0
-
-        # confronta i valori
         if pascal_persi_impianto <= 0:
-            risultati_finali.append(f"Modello {codice_pulito}: ha una prevalenza massima di {prev_float} Pa (richiesta non specificata).")
+            risultati_finali.append(f"Modello {codice_pulito}: ha una prevalenza massima di {prev_float:.2f} Pa (richiesta non specificata).")
         else:
             if prev_float >= pascal_persi_impianto:
-                risultati_finali.append(f"**Modello {codice_pulito}: COMPATIBILE.** Ha {prev_float} Pa, superiore ai {pascal_persi_impianto} Pa richiesti.")
+                risultati_finali.append(f"Modello {codice_pulito}: COMPATIBILE. Ha {prev_float:.2f} Pa, superiore ai {pascal_persi_impianto:.2f} Pa richiesti.")
             else:
-                risultati_finali.append(f"**Modello {codice_pulito}: NON COMPATIBILE.** Ha solo {prev_float} Pa, insufficiente per i {pascal_persi_impianto} Pa richiesti.")
+                risultati_finali.append(f"Modello {codice_pulito}: NON COMPATIBILE. Ha solo {prev_float:.2f} Pa, insufficiente per i {pascal_persi_impianto:.2f} Pa richiesti.")
 
-    # unisce i risultati
-    testo_ritorno = ""
-    for r in risultati_finali:
-        testo_ritorno = testo_ritorno + r + "\n\n"
-    
-    return testo_ritorno.strip()
+    return "\n\n".join(risultati_finali)
 
 @tool
 def consulta_dizionario_catalogo(parola_chiave: str) -> str:
