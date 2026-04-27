@@ -175,140 +175,57 @@ def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
 
 @tool
 def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decrescente", top_n: int = 3, valore_target: float = None) -> str:
-    """Usa questo tool per domande analitiche e comparative sul catalogo (es. 'quali modelli hanno la portata maggiore').
-    - parametro_richiesto: nome della colonna da analizzare, il piu vicino possibile al nome reale.
+    """Usa questo tool per domande analitiche e comparative sul catalogo.
+    - parametro_richiesto: nome della colonna da analizzare.
     - ordinamento: 'crescente' o 'decrescente'.
     - top_n: numero di modelli da restituire.
-    - valore_target: (opzionale) filtra i modelli con valore uguale o superiore a questo numero."""
-    print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
-    print(f"[TOOL] Estrazione -> Parametro: '{parametro_richiesto}', Ordine: '{ordinamento}', Top: {top_n}")
+    - valore_target: opzionale, filtra i modelli con valore uguale o superiore a questo numero."""
+    print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_GENERICO")
+    print(f"[TOOL] Estrazione -> Parametro: {parametro_richiesto}, Ordine: {ordinamento}, Top: {top_n}, Target: {valore_target}")
 
     if df_catalogo is None:
         return "Errore: file catalogo non caricato."
 
-    # rimuove i finti trattini bassi che l'llm inventa spesso
-    richiesta_esatta = parametro_richiesto.replace('_', ' ').strip().lower()
-    colonna_reale = None
-    
-    for col in colonne_catalogo:
-        col_pulita_spazi = " ".join(col.split()).lower()
-        richiesta_pulita_spazi = " ".join(richiesta_esatta.split())
-        if col_pulita_spazi == richiesta_pulita_spazi:
-            colonna_reale = col
-            break
+    colonna_modello = trova_colonna_modello()
+    if not colonna_modello:
+        return "Errore: impossibile trovare la colonna del modello nel catalogo."
 
-    # piano b se la colonna non matcha esattamente
+    colonna_reale = trova_colonna_esatta_o_simile(parametro_richiesto, colonne_catalogo)
     if not colonna_reale:
-        richiesta_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', parametro_richiesto).lower()
-        parole_richiesta = []
-        for p in richiesta_pulita.split():
-            if len(p) > 0:
-                parole_richiesta.append(p)
-        
-        # assegna un punteggio ad ogni colonna in base a quante parole combaciano
-        punteggi = {}
-        for col in colonne_catalogo:
-            col_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', col).lower()
-            parole_col = col_pulita.split()
-            
-            score = 0
-            for pr in parole_richiesta:
-                for pc in parole_col:
-                    if pr == pc or pr in pc:
-                        score = score + 1
-            
-            if score > 0:
-                punteggi[col] = score
-
-        if len(punteggi) == 0:
-            match_simili = difflib.get_close_matches(parametro_richiesto.replace('_', ' '), list(colonne_catalogo), n=5, cutoff=0.1)
-            
-            if len(match_simili) > 0:
-                opzioni = match_simili
-            else:
-                opzioni = colonne_catalogo[:5]
-                
-            testo_opzioni = ""
-            for opt in opzioni:
-                testo_opzioni = testo_opzioni + "- " + opt + "\n"
-                
-            return "Dì all'utente ESATTAMENTE questo: 'Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n" + testo_opzioni + "'"
-
-        max_score = 0
-        for val in punteggi.values():
-            if val > max_score:
-                max_score = val
-                
-        soglia = len(parole_richiesta) * 0.5
-        if soglia < 1:
-            soglia = 1
-        
-        migliori_colonne = []
-        for col, score in punteggi.items():
-            if score == max_score and score >= soglia:
-                migliori_colonne.append(col)
-
-        # se c'e un pareggio chiede aiuto all'utente
-        if len(migliori_colonne) > 1:
-            if valore_target is not None:
-                # Se c'è un target, siamo in un flusso automatico: forza la prima opzione
-                colonna_reale = migliori_colonne[0]
-            else:
-                testo_opzioni = ""
-                for opt in migliori_colonne:
-                    testo_opzioni = testo_opzioni + "- " + opt + "\n"
-                return "Dì all'utente ESATTAMENTE questo: 'Il parametro è ambiguo. Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n" + testo_opzioni + "'"
-            
-        elif len(migliori_colonne) == 1:
-            colonna_reale = migliori_colonne[0]
-            print(f"[TOOL] Match parziale trovato: '{parametro_richiesto}' diventerà '{colonna_reale}'")
-        else:
-            return "Nessuna colonna valida trovata. Chiedi all'utente di riformulare la domanda."
-    else:
-        print(f"[TOOL] Match ESATTO trovato per '{colonna_reale}'")
+        opzioni = "\n".join([f"- {c}" for c in colonne_catalogo[:15]])
+        return (
+            "Nessuna colonna valida trovata. "
+            "Chiedi all'utente di riformulare oppure di scegliere una di queste opzioni:\n"
+            f"{opzioni}"
+        )
 
     df = df_catalogo.copy()
-    
-    # fix artigianale per convertire i numeri col punto stile italiano
-    def pulisci_numero(valore):
-        if isinstance(valore, str):
-            valore_senza_punti = valore.replace('.', '')
-            valore_con_punto_decimale = valore_senza_punti.replace(',', '.')
-            return valore_con_punto_decimale
-        else:
-            return valore
-            
-    df[colonna_reale] = df[colonna_reale].apply(pulisci_numero)
-    df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
-    
+    df[colonna_reale] = converti_serie_numerica(df[colonna_reale])
     risultato = df.dropna(subset=[colonna_reale])
 
-    # ricerca a target
+    if risultato.empty:
+        return f"Nessun valore numerico valido trovato per il parametro '{colonna_reale}'."
+
     if valore_target is not None:
-        # tieni solo i modelli con potenza uguale o superiore al target richiesto
         risultato = risultato[risultato[colonna_reale] >= valore_target]
-        # ordina in modo crescente per dare il modello appena sufficiente
         risultato = risultato.sort_values(by=colonna_reale, ascending=True)
     else:
-        # vecchia logica per i massimi e minimi assoluti
-        ordinamento_minuscolo = ordinamento.strip().lower()
-        if ordinamento_minuscolo == "crescente":
-            deve_crescere = True
-        else:
-            deve_crescere = False
-        risultato = risultato.sort_values(by=colonna_reale, ascending=deve_crescere)
+        ordine = ordinamento.strip().lower()
+        ascending = True if ordine == "crescente" else False
+        risultato = risultato.sort_values(by=colonna_reale, ascending=ascending)
 
     risultato = risultato.head(top_n)
 
-    # crea l'elenco testuale per evitare che l'llm si confonda leggendo una tabella
-    testo_finale = ""
-    for index, row in risultato.iterrows():
-        nome_modello = row.get("Modello PAL", "Sconosciuto")
-        valore = row.get(colonna_reale, "N/D")
-        testo_finale = testo_finale + f"- Modello: {nome_modello} | Valore: {valore}\n"
+    if risultato.empty:
+        return f"Nessun modello trovato per il parametro '{colonna_reale}' con i filtri richiesti."
 
-    return testo_finale
+    righe = []
+    for _, row in risultato.iterrows():
+        nome_modello = row.get(colonna_modello, "Sconosciuto")
+        valore = row.get(colonna_reale, "ND")
+        righe.append(f"- Modello {nome_modello}: {colonna_reale} = {valore}")
 
+    return "\n".join(righe)
 
 @tool
 def cerca_sito_web(query: str) -> str:
