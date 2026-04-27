@@ -646,8 +646,13 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         return "ERRORE: Generazione dataframe fallita."
         
     except PermissionError:
-        return "ERRORE CRITICO: Chiudi il file CSV se è aperto in Excel e riprova."
+        return "ERRORE CRITICO: Chiudi il file CSV se aperto in Excel e riprova."
     except Exception as e:
+        errore_testo = str(e)
+
+        if "RESOURCE_EXHAUSTED" in errore_testo or "429" in errore_testo or "quota" in errore_testo.lower():
+            return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. Riprova dopo il reset giornaliero oppure cambia modello/API key."
+
         return f"ERRORE DI ESECUZIONE PYTHON: {e}"
 
 @tool
@@ -750,6 +755,11 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
         return "SUCCESSO: Grafico generato correttamente."
 
     except Exception as e:
+        errore_testo = str(e)
+
+        if "RESOURCE_EXHAUSTED" in errore_testo or "429" in errore_testo or "quota" in errore_testo.lower():
+            return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. Riprova dopo il reset giornaliero oppure cambia modello/API key."
+
         return f"ERRORE: {e}"
     
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
