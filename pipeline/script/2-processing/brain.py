@@ -71,6 +71,62 @@ def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
             
     return db_scelto
 
+def trova_colonna_esatta_o_simile(nome_richiesto: str, colonne_disponibili: list[str]) -> str | None:
+    if not nome_richiesto:
+        return None
+
+    nome_norm = " ".join(str(nome_richiesto).strip().lower().split())
+
+    for col in colonne_disponibili:
+        col_norm = " ".join(str(col).strip().lower().split())
+        if col_norm == nome_norm:
+            return col
+
+    punteggi = {}
+    parole_richiesta = re.sub(r'[^a-zA-Z0-9]', ' ', nome_norm).split()
+
+    for col in colonne_disponibili:
+        col_norm = re.sub(r'[^a-zA-Z0-9]', ' ', str(col).lower())
+        parole_col = col_norm.split()
+        score = 0
+        for pr in parole_richiesta:
+            for pc in parole_col:
+                if pr == pc or pr in pc:
+                    score += 1
+        if score > 0:
+            punteggi[col] = score
+
+    if not punteggi:
+        return None
+
+    return max(punteggi, key=punteggi.get)
+
+
+def trova_colonna_modello() -> str | None:
+    candidati = [
+        "Modello Prodotto",
+        "Modello PAL",
+        "Modello",
+        "Codice Modello"
+    ]
+
+    for nome in candidati:
+        col = trova_colonna_esatta_o_simile(nome, colonne_catalogo)
+        if col:
+            return col
+
+    return None
+
+
+def converti_serie_numerica(serie):
+    return pd.to_numeric(
+        serie.astype(str)
+        .str.replace(".", "", regex=False)
+        .str.replace(",", ".", regex=False)
+        .str.strip(),
+        errors="coerce"
+    )
+
 #2 DEFINIZIONE DEI TOOL
 
 @tool
