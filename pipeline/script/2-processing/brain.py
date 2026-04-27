@@ -21,7 +21,7 @@ import plotly.express as px
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 _cartella_script = os.path.dirname(_script_dir)
 sys.path.insert(0, _cartella_script)
-from config import CATALOGO_PATH, GOOGLE_API_KEY, CSV_GRAFICI_PATH
+from config import CATALOGO_PATH, GOOGLE_API_KEY, CSV_GRAFICI_PATH, DIR_GRAFICI_SALVATI
 
 class AgentState(TypedDict):
     messages: Annotated[List, operator.add]
@@ -680,49 +680,103 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
 
 @tool
 def genera_grafico_avanzato(richiesta_utente: str) -> str:
-    """Usa questo tool quando l'utente chiede di generare un grafico."""
-    global llm, dati_visivi_temporanei
+    """Usa questo tool SOLO quando l'utente chiede esplicitamente di creare o mostrare un grafico
+    partendo dai dati già estratti nel file CSV generato da estrai_dati_dinamici.
+    - richiesta_utente: frase completa dell'utente."""
     print(f"\n[TOOL] Esecuzione GENERA_GRAFICO_AVANZATO -> Richiesta: '{richiesta_utente}'")
-    
-    try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
-        # Legge dal path dove estrai_dati_dinamici ha salvato il file
-        csv_path = CSV_GRAFICI_PATH
-        
-        if not os.path.exists(csv_path):
-            return "ERRORE: File dataframe_grafico.csv non trovato in data/3-user_interface."
 
-        df_temp = pd.read_csv(csv_path)
-        df_temp.columns = df_temp.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
+    global dati_visivi_temporanei
+
+    try:
+        csv_path = CSV_GRAFICI_PATH
+
+        if not os.path.exists(csv_path):
+            return "ERRORE: File dataframe_grafico.csv non trovato. Prima devi estrarre i dati."
+
+        try:
+            df_temp = pd.read_csv(csv_path)
+        except UnicodeDecodeError:
+            df_temp = pd.read_csv(csv_path, encoding="latin-1")
+
+        if df_temp.empty:
+            return "ERRORE: Il file CSV esiste ma non contiene righe utili."
+
+        df_temp.columns = (
+            df_temp.columns
+            .astype(str)
+            .str.replace(r"\s+", " ", regex=True)
+            .str.strip()
+        )
+
         colonne = list(df_temp.columns)
-        
+
         prompt = f"""
-        Scrivi codice Plotly per: '{richiesta_utente}'
-        Usa 'df' e 'px'. Colonne: {colonne}
-        REGOLA: Salva il grafico in 'fig'. Non usare fig.show().
-        """
-        
+L'utente vuole un grafico basato su un dataframe Pandas già pronto.
+
+Richiesta utente:
+{richiesta_utente}
+
+Colonne reali del dataframe df:
+{colonne}
+
+REGOLE OBBLIGATORIE:
+1. Usa solo 'df' e 'px'.
+2. Crea ESATTAMENTE una variabile finale chiamata fig.
+3. Non usare print.
+4. Non usare fig.show().
+5. Non leggere file.
+6. Non creare dataframe di esempio.
+7. Usa solo colonne realmente presenti.
+8. Restituisci solo codice Python valido, preferibilmente dentro ```python.
+9. Se la richiesta è ambigua, crea un grafico a barre semplice usando la prima colonna testuale come asse x e la prima colonna numerica come asse y.
+10. Se possibile imposta anche un titolo chiaro con fig.update_layout(title="...").
+
+ESEMPI VALIDI:
+
+```python
+fig = px.bar(df, x="Modello Prodotto", y="Portata Massima", title="Portata Massima per modello")
+```
+
+```python
+fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grandezza Telaio", title="Portata vs Pressione")
+```
+"""
+
         risposta_llm = llm.invoke(prompt)
-        codice = re.search(r"```python\n(.*?)\n```", risposta_llm.content, re.DOTALL)
-        codice_pulito = codice.group(1).strip() if codice else risposta_llm.content.strip()
-        
-        scatola_sicura = {"df": df_temp, "px": px}
+
+        contenuto = risposta_llm.content.strip()
+        match = re.search(r"```python\s*(.*?)\s*```", contenuto, re.DOTALL)
+        if match:
+            codice_pulito = match.group(1).strip()
+        else:
+            codice_pulito = contenuto
+
+        if codice_pulito.startswith("python"):
+            codice_pulito = codice_pulito[len("python"):].strip()
+
+        print("[DEBUG LLM] Codice Plotly generato:")
+        print(codice_pulito)
+
+        scatola_sicura = {
+            "df": df_temp,
+            "px": px,
+            "pd": pd
+        }
+
         exec(codice_pulito, {}, scatola_sicura)
-        
-        if 'fig' in scatola_sicura:
-            cartella_grafici = os.path.join(pipeline_dir, 'data', '3-user_interface', 'grafici_salvati')
-            os.makedirs(cartella_grafici, exist_ok=True)
-            nome_file = f"grafico_{int(time.time())}.html"
-            html_path = os.path.join(cartella_grafici, nome_file)
-            
-            scatola_sicura['fig'].write_html(html_path, full_html=False, include_plotlyjs='cdn')
-            dati_visivi_temporanei = {"tipo": "grafico_html_file", "path": html_path}
-            
-            return "SUCCESSO: Grafico generato correttamente."
-        
-        return "ERRORE: Variabile 'fig' non trovata."
-            
+
+        if "fig" not in scatola_sicura:
+            return "ERRORE: Il modello non ha creato la variabile 'fig'."
+
+        os.makedirs(DIR_GRAFICI_SALVATI, exist_ok=True)
+        nome_file = f"grafico_{int(time.time())}.html"
+        html_path = os.path.join(DIR_GRAFICI_SALVATI, nome_file)
+
+        scatola_sicura["fig"].write_html(html_path, full_html=False, include_plotlyjs="cdn")
+        dati_visivi_temporanei = {"tipo": "grafico_html_file", "path": html_path}
+
+        return "SUCCESSO: Grafico generato correttamente."
+
     except Exception as e:
         return f"ERRORE: {e}"
     
@@ -795,6 +849,8 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 
 10. IF l'utente chiede di creare un GRAFICO o PLOTTARE i dati che sono stati estratti nel CSV:
 - Usa il tool 'genera_grafico_avanzato' passando la frase intera dell'utente.
+- Usa questo tool SOLO se esistono già dati estratti nel CSV.
+- Non descrivere il grafico a parole se puoi generarlo davvero.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.

@@ -326,6 +326,8 @@ if user_query:
                 st.write(response["testo"])
                 if "SUCCESSO: Dati estratti e salvati" in response["testo"]:
                     st.success("CSV creato correttamente.")
+                if "SUCCESSO: Grafico generato correttamente." in response["testo"]:
+                    st.success("Grafico creato correttamente.")
                 if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
                     
