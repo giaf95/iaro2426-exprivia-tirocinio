@@ -436,65 +436,71 @@ def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) ->
     if not codici_modelli or codici_modelli.strip() == "":
         return "Dati incompleti. Chiedi all'utente il codice del modello."
 
-    # 1. pulisce la stringa dell'AI e la divide in una lista (gestendo "e", "o", "oppure", virgole)
-    stringa_pulita = codici_modelli.lower().replace(' e ', ',').replace(' o ', ',').replace(' oppure ', ',')
-    lista_codici = [c.strip() for c in stringa_pulita.split(',') if c.strip()]
+    colonna_modello = trova_colonna_modello()
+    if not colonna_modello:
+        return "Errore: impossibile trovare la colonna del modello nel catalogo."
+
+    stringa_pulita = codici_modelli.lower().replace(" e ", ",").replace(" o ", ",").replace(" oppure ", ",")
+    lista_codici = [c.strip() for c in stringa_pulita.split(",") if c.strip()]
+
+    col_potenza = trova_colonna_esatta_o_simile("Potenza frigorifera totale macchina", colonne_catalogo)
+    eer_col = trova_colonna_esatta_o_simile("EER minimo", colonne_catalogo)
+    if not eer_col:
+        eer_col = trova_colonna_esatta_o_simile("EER compressori", colonne_catalogo)
+
+    cop_col = trova_colonna_esatta_o_simile("COP minimo", colonne_catalogo)
+    if not cop_col:
+        cop_col = trova_colonna_esatta_o_simile("COP compressori", colonne_catalogo)
 
     risultati_finali = []
 
-    # 2.ciclo for: calcola il consumo per ogni modello richiesto
     for codice_singolo in lista_codici:
         codice_pulito = codice_singolo.upper().replace("MODELLO", "").strip()
-        df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
+        df_modello = df_catalogo[df_catalogo[colonna_modello].astype(str).str.upper().str.contains(codice_pulito, na=False)]
 
         if df_modello.empty:
             risultati_finali.append(f"Modello {codice_pulito} non trovato nel catalogo.")
             continue
 
+        riga = df_modello.iloc[0]
         risultati = []
         kw_attuali = kw_richiesti
 
-        # auto-recupero
         if kw_attuali <= 0:
-            col_potenza = [col for col in colonne_catalogo if 'potenza frigorifera totale' in str(col).lower()]
-            if col_potenza:
-                val_potenza = df_modello.iloc[0].get(col_potenza[0], 0)
-                try:
-                    kw_attuali = float(str(val_potenza).replace(',', '.'))
-                    risultati.append(f"*(Nota: calcolo basato su potenza di targa di {kw_attuali} kW)*")
-                except:
-                    risultati_finali.append(f"Modello {codice_pulito}: Impossibile determinare i kW.")
-                    continue
-            else:
-                 risultati_finali.append(f"Modello {codice_pulito}: Impossibile determinare i kW.")
-                 continue
+            if not col_potenza:
+                risultati_finali.append(f"Modello {codice_pulito}: impossibile determinare i kW.")
+                continue
 
-        # estrazione di EER e COP
-        eer_col = [col for col in colonne_catalogo if 'eer' in str(col).lower()]
-        cop_col = [col for col in colonne_catalogo if 'cop' in str(col).lower()]
+            val_potenza = riga.get(col_potenza, 0)
+            potenza_num = converti_serie_numerica(pd.Series([val_potenza])).iloc[0]
+
+            if pd.isna(potenza_num) or potenza_num <= 0:
+                risultati_finali.append(f"Modello {codice_pulito}: impossibile determinare i kW.")
+                continue
+
+            kw_attuali = float(potenza_num)
+            risultati.append(f"Nota: calcolo basato su potenza di targa di {kw_attuali:.2f} kW.")
 
         if eer_col:
-            valore_eer = df_modello.iloc[0].get(eer_col[0], "N/D")
-            try:
-                eer_float = float(str(valore_eer).replace(',', '.'))
+            valore_eer = riga.get(eer_col, None)
+            eer_float = converti_serie_numerica(pd.Series([valore_eer])).iloc[0]
+            if pd.notna(eer_float) and eer_float > 0:
                 consumo_freddo = kw_attuali / eer_float
-                risultati.append(f"- Raffrescamento (EER {eer_float}): assorbe circa {consumo_freddo:.2f} kW elettrici.")
-            except:
-                pass
+                risultati.append(f"- Raffrescamento (EER {eer_float:.2f}): assorbe circa {consumo_freddo:.2f} kW elettrici.")
 
         if cop_col:
-            valore_cop = df_modello.iloc[0].get(cop_col[0], "N/D")
-            try:
-                cop_float = float(str(valore_cop).replace(',', '.'))
+            valore_cop = riga.get(cop_col, None)
+            cop_float = converti_serie_numerica(pd.Series([valore_cop])).iloc[0]
+            if pd.notna(cop_float) and cop_float > 0:
                 consumo_caldo = kw_attuali / cop_float
-                risultati.append(f"- Riscaldamento (COP {cop_float}): assorbe circa {consumo_caldo:.2f} kW elettrici.")
-            except:
-                pass
+                risultati.append(f"- Riscaldamento (COP {cop_float:.2f}): assorbe circa {consumo_caldo:.2f} kW elettrici.")
 
         if risultati:
-            risultati_finali.append(f"**Modello {codice_pulito}** (Carico: {kw_attuali} kW):\n" + "\n".join(risultati))
+            risultati_finali.append(f"Modello {codice_pulito} (Carico: {kw_attuali:.2f} kW):\n" + "\n".join(risultati))
         else:
             risultati_finali.append(f"Modello {codice_pulito}: dati di efficienza validi non trovati.")
+
+    return "\n\n".join(risultati_finali)
 
 @tool
 def verifica_prevalenza_canali(codici_modelli: str, pascal_persi_impianto: float = 0.0) -> str:
