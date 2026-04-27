@@ -563,35 +563,36 @@ def consulta_dizionario_catalogo(parola_chiave: str) -> str:
     - parola_chiave: il termine da cercare."""
     print(f"\n[TOOL] Esecuzione CONSULTA_DIZIONARIO -> Ricerca: '{parola_chiave}'")
 
-    # Percorso relativo sicuro
+    if not parola_chiave or parola_chiave.strip() == "":
+        return "Errore: Devi fornire una parola chiave per cercare nel dizionario."
+
     cartella_corrente = os.path.dirname(os.path.abspath(__file__))
     percorso_file = os.path.join(cartella_corrente, "..", "..", "data", "3-user_interface", "dizionario_catalogo.txt")
 
     try:
-        with open(percorso_file, 'r', encoding='utf-8') as f:
+        with open(percorso_file, "r", encoding="utf-8") as f:
             contenuto = f.read()
     except FileNotFoundError:
         return "Errore: Il file del dizionario non è stato trovato. Avvisa l'utente."
+    except UnicodeDecodeError:
+        with open(percorso_file, "r", encoding="latin-1") as f:
+            contenuto = f.read()
 
-    if parola_chiave and parola_chiave.strip() != "":
-        paragrafi = contenuto.split('\n\n')
-        risultati = []
-        
-        # ciclo for classico
-        for p in paragrafi:
-            if parola_chiave.lower() in p.lower():
-                risultati.append(p)
+    paragrafi = contenuto.split("\n\n")
+    risultati = []
+    parola = parola_chiave.strip().lower()
 
-        if len(risultati) > 0:
-            testo_ritorno = f"DATI ESTRATTI PER '{parola_chiave}':\n"
-            for r in risultati:
-                testo_ritorno = testo_ritorno + r + "\n\n"
-            
-            return testo_ritorno.strip()
-        else:
-            return f"Nessuna voce trovata per la parola chiave '{parola_chiave}'."
+    for p in paragrafi:
+        if parola in p.lower():
+            risultati.append(p.strip())
 
-    return "Errore: Devi fornire una parola chiave per cercare nel dizionario."
+    if risultati:
+        testo_ritorno = f"DATI ESTRATTI PER '{parola_chiave}':\n"
+        for r in risultati[:5]:
+            testo_ritorno = testo_ritorno + r + "\n\n"
+        return testo_ritorno.strip()
+
+    return f"Nessuna voce trovata per la parola chiave '{parola_chiave}'."
 
 dati_visivi_temporanei = None
 
