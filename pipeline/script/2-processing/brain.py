@@ -17,12 +17,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 import plotly.express as px
 
-# aggiunge pipeline/ al path per importare config.py
-# struttura: pipeline/script/2-processing/brain.py -> risale a pipeline/
-_script_dir = os.path.dirname(os.path.abspath(__file__))   # pipeline/script/2-processing
-_scripts_dir = os.path.dirname(_script_dir)                # pipeline/script
-_pipeline_dir = os.path.dirname(_scripts_dir)              # pipeline/
-sys.path.insert(0, _pipeline_dir)
+# aggiunge la cartella script al path per importare config.py
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_cartella_script = os.path.dirname(_script_dir)
+sys.path.insert(0, _cartella_script)
 from config import CATALOGO_PATH, GOOGLE_API_KEY
 
 class AgentState(TypedDict):
@@ -854,16 +852,7 @@ db_manuali = carica_database("chroma_db_knowledge_base_pdf", "manuali", embeddin
 try:
     # usa CATALOGO_PATH da config.py — supporta sia .xlsx che .csv
     if CATALOGO_PATH.endswith('.csv'):
-        # fallback automatico: prova utf-8, poi latin-1 (comune su Windows/Excel italiano)
-        for _enc in ('utf-8', 'latin-1', 'cp1252'):
-            try:
-                df_catalogo = pd.read_csv(CATALOGO_PATH, thousands='.', decimal=',', encoding=_enc)
-                print(f"[CATALOGO] Caricato con encoding '{_enc}'.")
-                break
-            except UnicodeDecodeError:
-                continue
-        else:
-            raise ValueError(f"Impossibile decodificare il file CSV con gli encoding utf-8, latin-1, cp1252.")
+        df_catalogo = pd.read_csv(CATALOGO_PATH, thousands='.', decimal=',')
     else:
         df_catalogo = pd.read_excel(CATALOGO_PATH, thousands='.', decimal=',')
 
@@ -893,7 +882,7 @@ tools = [#cerca_catalogo_specifico,
 
 # configurazione LangGraph e LLM
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-lite-preview-06-17",
+    model="gemini-2.5-flash-lite",
     temperature=0,
     google_api_key=GOOGLE_API_KEY
 )
@@ -909,13 +898,6 @@ def route_after_tool(state: AgentState) -> str:
     global dati_visivi_temporanei
     if dati_visivi_temporanei is not None:
         return "end"
-    # se l'ultimo messaggio e' un ToolMessage con un errore critico, termina subito
-    # cosi' evitiamo il loop in cui Gemini richiama lo stesso tool all'infinito
-    last = state["messages"][-1]
-    if hasattr(last, "content") and isinstance(last.content, str):
-        contenuto = last.content
-        if contenuto.startswith("ERRORE") or contenuto.startswith("Errore"):
-            return "end"
     return "agent"
 
 workflow.set_entry_point("agent")
