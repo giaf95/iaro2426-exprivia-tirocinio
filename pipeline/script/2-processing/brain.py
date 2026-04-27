@@ -388,42 +388,40 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
     - numero_persone: quantita' di persone (inserisci 0 se non fornite).
     - tipo_locale: es. 'scuola', 'palestra', 'ufficio'. (lascia "" se non specificato)."""
     print(f"\n[TOOL] Esecuzione CALCOLA_PORTATA_ARIA")
-    
-    #guardrail (Numeri)
+
     if area_mq <= 0 or numero_persone <= 0:
         print("[TOOL] Dati numerici mancanti rilevati. Blocco dell'esecuzione.")
         return "ISTRUZIONE PER L'AI: Dati incompleti. Fermati e chiedi all'utente i metri quadri e il numero di persone."
 
-    #guardrail (Testo / Amnesia)
     if not tipo_locale or tipo_locale.strip() == "":
-         tipo_locale = "generico"
+        tipo_locale = "generico"
 
-    # 1. Calcolo basato sulle persone (Fabbisogno per persona)
-    m3h_persona = 40 # Standard uffici/residenziale
+    m3h_persona = 40
     tipo_locale_low = tipo_locale.lower()
     if "palestra" in tipo_locale_low or "discoteca" in tipo_locale_low or "ristorante" in tipo_locale_low:
         m3h_persona = 60
-        
+
     fabbisogno_persone = numero_persone * m3h_persona
-    
-    # 2. Calcolo basato sui ricambi d'aria del volume (ACH)
-    altezza_media = 3.0 # Assumiamo 3 metri di altezza standard
+
+    altezza_media = 3.0
     volume = area_mq * altezza_media
-    
-    ach = 2.0 # Ricambi/ora standard
+
+    ach = 2.0
     if "scuola" in tipo_locale_low or "ristorante" in tipo_locale_low:
         ach = 4.0
     elif "palestra" in tipo_locale_low or "discoteca" in tipo_locale_low:
         ach = 6.0
-        
+
     fabbisogno_volumetrico = volume * ach
-    
-    # Prendi il valore più alto
     portata_finale = max(fabbisogno_persone, fabbisogno_volumetrico)
-    
+
     print(f"[TOOL] MAX tra Persone ({fabbisogno_persone}) e Volume ({fabbisogno_volumetrico}) = {portata_finale} m3/h")
 
-    return f"Calcolo completato: {portata_finale:.2f} m3/h. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Parametro: 'Portata Massima Mandata Standard'. Target: {portata_finale:.2f}."
+    return (
+        f"Calcolo completato: {portata_finale:.2f} m3/h. "
+        f"ISTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. "
+        f"Parametro: 'Portata Massima'. Target: {portata_finale:.2f}."
+    )
 
 @tool
 def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) -> str:
