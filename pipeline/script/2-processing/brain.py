@@ -131,42 +131,47 @@ def converti_serie_numerica(serie):
 
 @tool
 def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
-    """Usa questo tool quando l'utente nomina un modello specifico (es. '091-051' o '061-035').
-    - modello: il codice esatto del modello (es. '091-051').
-    - parametro: la grandezza fisica da cercare (es. 'Portata Massima Mandata'). Se l'utente non la specifica, chiedigliela prima di chiamare questo tool."""
+    """Usa questo tool quando l'utente nomina un modello specifico (es. 7AI-183E).
+    - modello: il codice del modello.
+    - parametro: la grandezza fisica da cercare. Se non specificata, chiedila all'utente."""
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_SPECIFICO")
-    print(f"[TOOL] Ricerca chirurgica -> Modello: '{modello}' | Parametro: '{parametro}'")
-    
+    print(f"[TOOL] Ricerca chirurgica -> Modello: {modello} | Parametro: {parametro}")
+
     if df_catalogo is None:
         return "Errore: file catalogo non caricato."
-    
-    # pulizia del codice cercato
+
+    colonna_modello = trova_colonna_modello()
+    if not colonna_modello:
+        return "Errore: impossibile trovare la colonna del modello nel catalogo."
+
     codice_pulito = modello.upper().replace("MODELLO", "").strip()
-    
-    # cerca la riga esatta nel DataFrame Pandas
-    df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
-    
+
+    df_modello = df_catalogo[
+        df_catalogo[colonna_modello].astype(str).str.upper().str.contains(codice_pulito, na=False)
+    ]
+
     if df_modello.empty:
         return f"Modello {codice_pulito} non trovato nel catalogo."
-        
-    # salvagente anti-crash se l'AI dimentica il parametro
+
     if parametro == "Tutti" or parametro.strip() == "":
-         return f"Modello {codice_pulito} trovato. Chiedi all'utente quale parametro vuole conoscere (es. dimensioni, peso, portata)."
-         
-    # cerca le colonne che contengono la parola richiesta
-    richiesta_pulita = parametro.lower().strip()
-    colonne_trovate = [col for col in colonne_catalogo if richiesta_pulita in str(col).lower()]
-    
-    if not colonne_trovate:
-         return f"Il parametro '{parametro}' non esiste nel catalogo. Chiedi all'utente di specificare meglio."
-         
-    # estrae tutti i parametri trovati
-    risultati = []
-    for col in colonne_trovate:
-        valore = df_modello.iloc[0].get(col, "N/D")
-        risultati.append(f"- {col}: {valore}")
-        
-    return f"Dati tecnici per il modello {codice_pulito}:\n" + "\n".join(risultati)
+        return (
+            f"Modello {codice_pulito} trovato. "
+            f"Chiedi all'utente quale parametro vuole conoscere."
+        )
+
+    colonna_reale = trova_colonna_esatta_o_simile(parametro, colonne_catalogo)
+    if not colonna_reale:
+        return (
+            f"Il parametro '{parametro}' non esiste nel catalogo. "
+            f"Chiedi all'utente di specificare meglio."
+        )
+
+    valore = df_modello.iloc[0].get(colonna_reale, "ND")
+
+    return (
+        f"Dati tecnici per il modello {codice_pulito}:\n"
+        f"- {colonna_reale}: {valore}"
+    )
 
 @tool
 def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decrescente", top_n: int = 3, valore_target: float = None) -> str:
@@ -1019,14 +1024,14 @@ except Exception as e:
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [#cerca_catalogo_specifico, 
-         #cerca_catalogo_generico, 
+tools = [cerca_catalogo_specifico, 
+         cerca_catalogo_generico, 
          #cerca_sito_web, cerca_manuali, 
          calcola_fabbisogno_termico, 
          calcola_portata_aria, 
          calcola_consumo_elettrico, 
          verifica_prevalenza_canali,
-         consulta_dizionario_catalogo,
+         #consulta_dizionario_catalogo,
          #prepara_dati_grafico,
          estrai_dati_dinamici,
          genera_grafico_avanzato]
