@@ -21,7 +21,7 @@ import plotly.express as px
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 _cartella_script = os.path.dirname(_script_dir)
 sys.path.insert(0, _cartella_script)
-from config import CATALOGO_PATH, GOOGLE_API_KEY, CSV_GRAFICI_PATH, DIR_GRAFICI_SALVATI
+from config import CATALOGO_PATH, GOOGLE_API_KEYS, CSV_GRAFICI_PATH, DIR_GRAFICI_SALVATI
 
 class AgentState(TypedDict):
     messages: Annotated[List, operator.add]
@@ -126,6 +126,49 @@ def converti_serie_numerica(serie):
         .str.strip(),
         errors="coerce"
     )
+
+indice_api_corrente = 0
+
+def crea_llm_con_chiave(api_key: str):
+    return ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash-lite",
+        temperature=0,
+        google_api_key=api_key
+    )
+
+def ottieni_api_key_corrente():
+    global indice_api_corrente
+    if not GOOGLE_API_KEYS:
+        raise ValueError("Nessuna GOOGLE_API_KEY configurata.")
+    return GOOGLE_API_KEYS[indice_api_corrente]
+
+def passa_alla_prossima_api_key():
+    global indice_api_corrente
+    if indice_api_corrente + 1 >= len(GOOGLE_API_KEYS):
+        return False
+    indice_api_corrente += 1
+    print(f"[LLM] Switch API key -> indice {indice_api_corrente + 1}/{len(GOOGLE_API_KEYS)}")
+    return True
+
+def errore_quota_google(exc: Exception) -> bool:
+    testo = str(exc)
+    return (
+        "RESOURCE_EXHAUSTED" in testo
+        or "429" in testo
+        or "GenerateRequestsPerDayPerProjectPerModel-FreeTier" in testo
+        or "quota exceeded" in testo.lower()
+    )
+
+def invoca_llm_con_failover(input_llm):
+    global llm, llm_con_tools, app
+
+    try:
+        return llm.invoke(input_llm)
+    except Exception as e:
+        if errore_quota_google(e) and passa_alla_prossima_api_key():
+            llm, llm_con_tools, app = costruisci_motore_llm()
+            return llm.invoke(input_llm)
+        raise
 
 #2 DEFINIZIONE DEI TOOL
 
@@ -613,7 +656,7 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         5. Restituisci solo codice Python valido, preferibilmente dentro un blocco ```python.
         """
         
-        risposta_llm = llm.invoke(prompt)
+        risposta_llm = invoca_llm_con_failover(prompt)
 
         contenuto = risposta_llm.content.strip()
         match = re.search(r"```python\s*(.*?)\s*```", contenuto, re.DOTALL)
@@ -719,7 +762,7 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
 ```
 """
 
-        risposta_llm = llm.invoke(prompt)
+        risposta_llm = invoca_llm_con_failover(prompt)
 
         contenuto = risposta_llm.content.strip()
         match = re.search(r"```python\s*(.*?)\s*```", contenuto, re.DOTALL)
@@ -783,6 +826,12 @@ def should_continue(state: AgentState) -> str:
     if last_message.tool_calls:
         return "tools"
     return "end"
+
+def route_after_tool(state: AgentState) -> str:
+    global dati_visivi_temporanei
+    if dati_visivi_temporanei is not None:
+        return "end"
+    return "agent"
 
 #4 FUNZIONI DI INTERFACCIA (APP)
 
@@ -860,14 +909,44 @@ REGOLE GLOBALI:
     current_state = {"messages": messaggi_per_llm}
 
     try:
-        # attiva il cronometro prima che l'llm inizi a pensare
         start_time = time.time()
-        result = app.invoke(current_state, {"recursion_limit": 10})
+        result = app.invoke(current_state, recursion_limit=10)
         end_time = time.time()
         tempo_trascorso = end_time - start_time
-        print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
+        print(f"[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
+
     except Exception as e:
-        return {"testo": f"Si è verificato un errore nel motore: {e}", "azioni": []}
+        global llm, llm_con_tools, app
+
+        if errore_quota_google(e):
+            print(f"[LLM] Quota esaurita sulla chiave corrente: {e}")
+
+            if passa_alla_prossima_api_key():
+                try:
+                    llm, llm_con_tools, app = costruisci_motore_llm()
+                    print("[LLM] Motore ricostruito con la nuova API key")
+
+                    start_time = time.time()
+                    result = app.invoke(current_state, recursion_limit=10)
+                    end_time = time.time()
+                    tempo_trascorso = end_time - start_time
+                    print(f"[DEBUG TEMPO] Tempo di risposta dopo switch: {tempo_trascorso:.2f} secondi")
+
+                except Exception as e2:
+                    return {
+                        "testo": f"Si è verificato un errore nel motore anche dopo il cambio API key: {e2}",
+                        "azioni": []
+                    }
+            else:
+                return {
+                    "testo": "Quota Google esaurita su tutte le API key configurate per oggi.",
+                    "azioni": []
+                }
+        else:
+            return {
+                "testo": f"Si è verificato un errore nel motore: {e}",
+                "azioni": []
+            }
 
     nuovi_messaggi = result["messages"]
 
@@ -964,27 +1043,19 @@ tools = [cerca_catalogo_specifico,
          genera_grafico_avanzato]
 
 # configurazione LangGraph e LLM
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-lite",
-    temperature=0,
-    google_api_key=GOOGLE_API_KEY
-)
-llm_con_tools = llm.bind_tools(tools)
+def costruisci_motore_llm():
+    llm_locale = crea_llm_con_chiave(ottieni_api_key_corrente())
+    llm_con_tools_locale = llm_locale.bind_tools(tools)
+    tool_node_locale = ToolNode(tools)
 
-tool_node = ToolNode(tools)
+    workflow_locale = StateGraph(AgentState)
+    workflow_locale.add_node("agent", call_model)
+    workflow_locale.add_node("tools", tool_node_locale)
+    workflow_locale.set_entry_point("agent")
+    workflow_locale.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
+    workflow_locale.add_conditional_edges("tools", route_after_tool, {"agent": "agent", "end": END})
 
-workflow = StateGraph(AgentState)
-workflow.add_node("agent", call_model)
-workflow.add_node("tools", tool_node)
+    app_locale = workflow_locale.compile()
+    return llm_locale, llm_con_tools_locale, app_locale
 
-def route_after_tool(state: AgentState) -> str:
-    global dati_visivi_temporanei
-    if dati_visivi_temporanei is not None:
-        return "end"
-    return "agent"
-
-workflow.set_entry_point("agent")
-workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
-workflow.add_conditional_edges("tools", route_after_tool, {"agent": "agent", "end": END})
-
-app = workflow.compile()
+llm, llm_con_tools, app = costruisci_motore_llm()

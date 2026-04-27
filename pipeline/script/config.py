@@ -15,6 +15,19 @@ DATA_DIR = os.path.join(PIPELINE_DIR, 'data')
 
 # 4. ORA possiamo leggere le variabili d'ambiente in modo sicuro
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_API_KEY_2 = os.getenv("GOOGLE_API_KEY_2")
+GOOGLE_API_KEY_3 = os.getenv("GOOGLE_API_KEY_3")
+GOOGLE_API_KEY_4 = os.getenv("GOOGLE_API_KEY_4")
+
+GOOGLE_API_KEYS = [
+    key for key in [
+        GOOGLE_API_KEY,
+        GOOGLE_API_KEY_2,
+        GOOGLE_API_KEY_3,
+        GOOGLE_API_KEY_4
+    ]
+    if key and key.strip()
+]
 NOME_CATALOGO = os.getenv("NOME_FILE_CATALOGO", "catalogo_sintetico_completo.csv")
 
 # 5. Percorsi centralizzati
