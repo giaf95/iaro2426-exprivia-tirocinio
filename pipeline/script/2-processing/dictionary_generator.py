@@ -4,7 +4,7 @@ import sys
 
 # Percorsi dinamici tramite config.py
 cartella_corrente = os.path.dirname(os.path.abspath(__file__))
-cartella_script = os.path.abspath(os.path.join(cartella_corrente, "..", "..", "pipeline", "script"))
+cartella_script = os.path.dirname(cartella_corrente)
 sys.path.insert(0, cartella_script)
 
 from config import CATALOGO_PATH, DATA_DIR, GOOGLE_API_KEY
