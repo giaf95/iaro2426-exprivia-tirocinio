@@ -7,25 +7,53 @@ cartella_corrente = os.path.dirname(os.path.abspath(__file__))
 cartella_script = os.path.dirname(cartella_corrente)
 sys.path.insert(0, cartella_script)
 
-from config import CATALOGO_PATH, DATA_DIR, GOOGLE_API_KEY
+from config import CATALOGO_PATH, DATA_DIR, GOOGLE_API_KEYS
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 percorso_catalogo = CATALOGO_PATH
 percorso_output = os.path.join(DATA_DIR, "3-user_interface", "dizionario_catalogo.txt")
 
-# Configurazione Gemini
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-lite",
-    temperature=0,
-    google_api_key=GOOGLE_API_KEY
-)
+# Gestione multi API key per evitare RESOURCE_EXHAUSTED
+if not GOOGLE_API_KEYS:
+    raise RuntimeError("Nessuna GOOGLE_API_KEY configurata nel file .env")
+
+indice_api_corrente = 0
+
+
+def ottieni_api_key_corrente() -> str:
+    return GOOGLE_API_KEYS[indice_api_corrente]
+
+
+def passa_alla_prossima_api_key() -> bool:
+    global indice_api_corrente
+    if indice_api_corrente + 1 >= len(GOOGLE_API_KEYS):
+        print("[LLM] Nessun'altra API key disponibile per il dizionario.")
+        return False
+
+    indice_api_corrente += 1
+    print(
+        f"[LLM] Switch API key dizionario -> {indice_api_corrente + 1}/{len(GOOGLE_API_KEYS)}"
+    )
+    return True
+
+
+def crea_llm_con_chiave(api_key: str) -> ChatGoogleGenerativeAI:
+    return ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash-lite",
+        temperature=0,
+        google_api_key=api_key,
+    )
+
+# Configurazione Gemini (usa la chiave corrente con rotazione)
+llm = crea_llm_con_chiave(ottieni_api_key_corrente())
 
 def chiedi_a_gemini(parametro, unita_misura):
     """Invia una richiesta al modello Gemini per generare la descrizione."""
-    
+    global llm
+
     testo_unita = ""
     if unita_misura != "":
-         testo_unita = f"L'unità di misura utilizzata in catalogo per questo parametro è: {unita_misura}."
+        testo_unita = f"L'unità di misura utilizzata in catalogo per questo parametro è: {unita_misura}."
 
     prompt_sistema = f"""Sei un ingegnere esperto di sistemi di refrigerazione e HVAC. 
 Sto creando un dizionario tecnico per spiegare ai clienti le colonne di un catalogo di macchinari per la refrigerazione.
@@ -35,11 +63,26 @@ Non usare introduzioni come 'Ecco la descrizione'. Scrivi solo la spiegazione.
 Parametro da spiegare: {parametro}
 {testo_unita}"""
 
-    try:
-        risposta = llm.invoke(prompt_sistema)
-        return risposta.content.strip()
-    except Exception as e:
-        return f"[Errore di connessione a Gemini: {e}]"
+    tentativi = 0
+    max_tentativi = len(GOOGLE_API_KEYS)
+
+    while tentativi < max_tentativi:
+        try:
+            risposta = llm.invoke(prompt_sistema)
+            return risposta.content.strip()
+        except Exception as e:
+            msg = str(e)
+            # Gestione specifica per 429 / RESOURCE_EXHAUSTED
+            if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
+                print(f"[LLM] Errore 429/RESOURCE_EXHAUSTED: {msg}")
+                if not passa_alla_prossima_api_key():
+                    return f"[Errore di connessione a Gemini dopo rotazione chiavi: {e}]"
+                llm = crea_llm_con_chiave(ottieni_api_key_corrente())
+                tentativi += 1
+                continue
+            return f"[Errore di connessione a Gemini: {e}]"
+
+    return "[Errore di connessione a Gemini: nessuna chiave disponibile senza 429]"
 
 
 def genera_dizionario_ai():
