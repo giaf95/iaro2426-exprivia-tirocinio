@@ -1,25 +1,27 @@
 import pandas as pd
 import os
 import sys
-import requests
-import json
 
 # Percorsi dinamici tramite config.py
 cartella_corrente = os.path.dirname(os.path.abspath(__file__))
 cartella_script = os.path.abspath(os.path.join(cartella_corrente, "..", "..", "pipeline", "script"))
 sys.path.insert(0, cartella_script)
 
-from config import CATALOGO_PATH, DATA_DIR
+from config import CATALOGO_PATH, DATA_DIR, GOOGLE_API_KEY
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 percorso_catalogo = CATALOGO_PATH
 percorso_output = os.path.join(DATA_DIR, "3-user_interface", "dizionario_catalogo.txt")
 
-# Configurazione Ollama
-MODELLO_OLLAMA = "llama3.1:latest"
-URL_OLLAMA = "http://localhost:11434/api/generate"
+# Configurazione Gemini
+llm = ChatGoogleGenerativeAI(
+    model="gemini-1.5-flash",
+    temperature=0,
+    google_api_key=GOOGLE_API_KEY
+)
 
-def chiedi_a_ollama(parametro, unita_misura):
-    """Invia una richiesta al modello locale Ollama per generare la descrizione."""
+def chiedi_a_gemini(parametro, unita_misura):
+    """Invia una richiesta al modello Gemini per generare la descrizione."""
     
     testo_unita = ""
     if unita_misura != "":
@@ -33,21 +35,11 @@ Non usare introduzioni come 'Ecco la descrizione'. Scrivi solo la spiegazione.
 Parametro da spiegare: {parametro}
 {testo_unita}"""
 
-    payload = {
-        "model": MODELLO_OLLAMA,
-        "prompt": prompt_sistema,
-        "stream": False
-    }
-
     try:
-        risposta = requests.post(URL_OLLAMA, json=payload)
-        if risposta.status_code == 200:
-            dati = risposta.json()
-            return dati.get("response", "").strip()
-        else:
-            return f"[Errore di generazione: codice {risposta.status_code}]"
+        risposta = llm.invoke(prompt_sistema)
+        return risposta.content.strip()
     except Exception as e:
-        return f"[Errore di connessione a Ollama: {e}]"
+        return f"[Errore di connessione a Gemini: {e}]"
 
 
 def genera_dizionario_ai():
@@ -90,7 +82,7 @@ def genera_dizionario_ai():
             if col_str not in parametri_da_descrivere:
                 parametri_da_descrivere[col_str] = ""
 
-    print(f"Trovati {len(parametri_da_descrivere)} parametri da analizzare. Avvio Llama 3.1...")
+    print(f"Trovati {len(parametri_da_descrivere)} parametri da analizzare. Avvio Gemini...")
     print("Questa operazione richiederà del tempo. Attendi...")
 
     testo_finale = "DIZIONARIO DEL CATALOGO HVAC\nDi seguito l'elenco dei parametri tecnici tracciati nel database e il loro significato:\n\n"
@@ -100,7 +92,7 @@ def genera_dizionario_ai():
     for parametro, unita in parametri_da_descrivere.items():
         print(f"[{contatore}/{len(parametri_da_descrivere)}] Generazione descrizione per: {parametro}...")
         
-        descrizione_ai = chiedi_a_ollama(parametro, unita)
+        descrizione_ai = chiedi_a_gemini(parametro, unita)
         
         testo_finale = testo_finale + f"**{parametro}**"
         if unita != "" and unita != "nan":
