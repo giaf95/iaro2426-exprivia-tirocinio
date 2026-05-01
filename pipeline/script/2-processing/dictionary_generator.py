@@ -15,7 +15,7 @@ percorso_output = os.path.join(DATA_DIR, "3-user_interface", "dizionario_catalog
 
 # Configurazione Gemini
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
+    model="gemini-2.5-flash-lite",
     temperature=0,
     google_api_key=GOOGLE_API_KEY
 )
