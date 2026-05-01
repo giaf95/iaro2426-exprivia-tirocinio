@@ -1030,12 +1030,12 @@ except Exception as e:
 
 tools = [cerca_catalogo_specifico, 
          cerca_catalogo_generico, 
-         #cerca_sito_web, cerca_manuali, 
+         cerca_sito_web, cerca_manuali, 
          calcola_fabbisogno_termico, 
          calcola_portata_aria, 
          calcola_consumo_elettrico, 
          verifica_prevalenza_canali,
-         #consulta_dizionario_catalogo,
+         consulta_dizionario_catalogo,
          #prepara_dati_grafico,
          estrai_dati_dinamici,
          genera_grafico_avanzato]

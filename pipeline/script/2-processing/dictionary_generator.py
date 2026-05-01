@@ -1,12 +1,18 @@
 import pandas as pd
 import os
+import sys
 import requests
 import json
 
-# Percorsi relativi per compatibilità con GitHub
+# Percorsi dinamici tramite config.py
 cartella_corrente = os.path.dirname(os.path.abspath(__file__))
-percorso_excel = os.path.join(cartella_corrente, "..", "..", "data", "1-preprocessing", "catalogo.xlsx")
-percorso_output = os.path.join(cartella_corrente, "..", "..", "data", "3-user_interface", "dizionario_catalogo.txt")
+cartella_script = os.path.abspath(os.path.join(cartella_corrente, "..", "..", "pipeline", "script"))
+sys.path.insert(0, cartella_script)
+
+from config import CATALOGO_PATH, DATA_DIR
+
+percorso_catalogo = CATALOGO_PATH
+percorso_output = os.path.join(DATA_DIR, "3-user_interface", "dizionario_catalogo.txt")
 
 # Configurazione Ollama
 MODELLO_OLLAMA = "llama3.1:latest"
@@ -45,13 +51,19 @@ Parametro da spiegare: {parametro}
 
 
 def genera_dizionario_ai():
-    print(f"Lettura del catalogo Excel in corso... ({percorso_excel})")
+    print(f"Lettura del catalogo in corso... ({percorso_catalogo})")
     
     try:
-        # Leggo le prime due righe per avere le intestazioni e i dati per estrarre le unità di misura
-        df = pd.read_excel(percorso_excel, nrows=1)
+        # Lettura robusta compatibile con il CSV pulito e il vecchio Excel
+        if percorso_catalogo.lower().endswith(".xlsx"):
+            df = pd.read_excel(percorso_catalogo)
+        else:
+            try:
+                df = pd.read_csv(percorso_catalogo, sep=None, engine="python", encoding="utf-8")
+            except UnicodeDecodeError:
+                df = pd.read_csv(percorso_catalogo, sep=None, engine="python", encoding="latin-1")
     except Exception as e:
-        print(f"Errore nella lettura dell'Excel: {e}")
+        print(f"Errore nella lettura del catalogo: {e}")
         return
 
     colonne_totali = df.columns
@@ -98,6 +110,7 @@ def genera_dizionario_ai():
         contatore = contatore + 1
 
     # Salvataggio del file
+    os.makedirs(os.path.dirname(percorso_output), exist_ok=True)
     try:
         with open(percorso_output, 'w', encoding='utf-8') as f:
             f.write(testo_finale)
