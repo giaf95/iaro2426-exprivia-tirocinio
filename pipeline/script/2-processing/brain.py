@@ -150,6 +150,10 @@ def passa_alla_prossima_api_key():
     print(f"[LLM] Switch API key -> indice {indice_api_corrente + 1}/{len(GOOGLE_API_KEYS)}")
     return True
 
+def reset_api_key_index():
+    global indice_api_corrente
+    indice_api_corrente = 0
+
 def errore_quota_google(exc: Exception) -> bool:
     testo = str(exc)
     return (
@@ -160,15 +164,26 @@ def errore_quota_google(exc: Exception) -> bool:
     )
 
 def invoca_llm_con_failover(input_llm):
-    global llm, llm_con_tools, app
+    global llm, llm_con_tools, app, indice_api_corrente
 
-    try:
-        return llm.invoke(input_llm)
-    except Exception as e:
-        if errore_quota_google(e) and passa_alla_prossima_api_key():
-            llm, llm_con_tools, app = costruisci_motore_llm()
+    ultimo_errore = None
+
+    while True:
+        try:
             return llm.invoke(input_llm)
-        raise
+        except Exception as e:
+            ultimo_errore = e
+
+            if not errore_quota_google(e):
+                raise
+
+            print(f"[LLM] Quota esaurita sulla chiave corrente: {e}")
+
+            if not passa_alla_prossima_api_key():
+                raise ultimo_errore
+
+            llm, llm_con_tools, app = costruisci_motore_llm()
+            print("[LLM] Motore ricostruito con la nuova API key")
 
 #2 DEFINIZIONE DEI TOOL
 
@@ -862,39 +877,37 @@ REGOLE GLOBALI:
 
     current_state = {"messages": messaggi_per_llm}
 
-    try:
-        start_time = time.time()
-        result = app.invoke(current_state, recursion_limit=10)
-        end_time = time.time()
-        tempo_trascorso = end_time - start_time
-        print(f"[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
+    ultimo_errore = None
 
-    except Exception as e:
-        if errore_quota_google(e):
-            print(f"[LLM] Quota esaurita sulla chiave corrente: {e}")
+    while True:
+        try:
+            start_time = time.time()
+            result = app.invoke(current_state, recursion_limit=10)
+            end_time = time.time()
+            tempo_trascorso = end_time - start_time
 
-            if passa_alla_prossima_api_key():
-                try:
+            if ultimo_errore is None:
+                print(f"[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
+            else:
+                print(f"[DEBUG TEMPO] Tempo di risposta dopo switch: {tempo_trascorso:.2f} secondi")
+            break
+
+        except Exception as e:
+            ultimo_errore = e
+
+            if errore_quota_google(e):
+                print(f"[LLM] Quota esaurita sulla chiave corrente: {e}")
+
+                if passa_alla_prossima_api_key():
                     llm, llm_con_tools, app = costruisci_motore_llm()
                     print("[LLM] Motore ricostruito con la nuova API key")
+                    continue
 
-                    start_time = time.time()
-                    result = app.invoke(current_state, recursion_limit=10)
-                    end_time = time.time()
-                    tempo_trascorso = end_time - start_time
-                    print(f"[DEBUG TEMPO] Tempo di risposta dopo switch: {tempo_trascorso:.2f} secondi")
-
-                except Exception as e2:
-                    return {
-                        "testo": f"Si è verificato un errore nel motore anche dopo il cambio API key: {e2}",
-                        "azioni": []
-                    }
-            else:
                 return {
                     "testo": "Quota Google esaurita su tutte le API key configurate per oggi.",
                     "azioni": []
                 }
-        else:
+
             return {
                 "testo": f"Si è verificato un errore nel motore: {e}",
                 "azioni": []
