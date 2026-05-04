@@ -15,19 +15,25 @@ DATA_DIR = os.path.join(PIPELINE_DIR, 'data')
 
 # 4. ORA possiamo leggere le variabili d'ambiente in modo sicuro
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GOOGLE_API_KEY_2 = os.getenv("GOOGLE_API_KEY_2")
-GOOGLE_API_KEY_3 = os.getenv("GOOGLE_API_KEY_3")
-GOOGLE_API_KEY_4 = os.getenv("GOOGLE_API_KEY_4")
 
-GOOGLE_API_KEYS = [
-    key for key in [
-        GOOGLE_API_KEY,
-        GOOGLE_API_KEY_2,
-        GOOGLE_API_KEY_3,
-        GOOGLE_API_KEY_4
-    ]
-    if key and key.strip()
-]
+chiavi_google_aggiuntive = []
+
+for nome_variabile, valore_variabile in os.environ.items():
+    if nome_variabile.startswith("GOOGLE_API_KEY_"):
+        suffisso = nome_variabile.replace("GOOGLE_API_KEY_", "").strip()
+        if suffisso.isdigit() and valore_variabile and valore_variabile.strip():
+            chiavi_google_aggiuntive.append((int(suffisso), valore_variabile.strip()))
+
+chiavi_google_aggiuntive.sort(key=lambda x: x[0])
+
+GOOGLE_API_KEYS = []
+if GOOGLE_API_KEY and GOOGLE_API_KEY.strip():
+    GOOGLE_API_KEYS.append(GOOGLE_API_KEY.strip())
+
+GOOGLE_API_KEYS.extend([valore for _, valore in chiavi_google_aggiuntive])
+
+if not GOOGLE_API_KEYS:
+    raise ValueError("Nessuna GOOGLE_API_KEY valida trovata nel file .env")
 NOME_CATALOGO = os.getenv("NOME_FILE_CATALOGO", "catalogo_sintetico_completo.csv")
 
 # 5. Percorsi centralizzati
