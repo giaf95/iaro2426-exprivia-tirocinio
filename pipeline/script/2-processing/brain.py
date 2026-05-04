@@ -746,7 +746,7 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
 
         scatola_sicura["fig"].write_html(html_path, full_html=False, include_plotlyjs="cdn")
 
-        return "SUCCESSO: Grafico generato correttamente."
+        return f"SUCCESSO_GRAFICO::{html_path}"
 
     except Exception as e:
         errore_testo = str(e)
@@ -901,11 +901,12 @@ REGOLE GLOBALI:
             }
 
     nuovi_messaggi = result["messages"]
-    testo = msg.content
     istr_marker = "ISTRUZIONE PER L'AI"
     risposta_assistente = ""
+
     for msg in reversed(nuovi_messaggi):
         if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
+            testo = msg.content.strip()
             if istr_marker in testo:
                 testo = testo.split(istr_marker)[0].strip()
             risposta_assistente = testo
@@ -915,10 +916,11 @@ REGOLE GLOBALI:
 
     tool_usati = []
     for msg in nuovi_messaggi:
-        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
             for tool in msg.tool_calls:
-                if tool['name'] not in tool_usati:
-                    tool_usati.append(tool['name'])
+                nome_tool = tool.get("name")
+                if nome_tool and nome_tool not in tool_usati:
+                    tool_usati.append(nome_tool)
 
     dati_da_esportare = None
 
