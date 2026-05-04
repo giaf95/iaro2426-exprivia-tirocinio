@@ -272,7 +272,11 @@ def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decres
 
 @tool
 def cerca_sito_web(query: str) -> str:
-    """Usa questo tool per cercare procedure passo-passo, guide all'installazione, troubleshooting e codici di errore.
+    """Usa questo tool per cercare informazioni dal SITO ZOPPELLARO:
+    - descrizioni di prodotti e soluzioni (es. unità per sale operatorie, deumidificatori per piscine, roof-top, recuperatori di calore)
+    - categorie applicative (ospedali, piscine, aeroporti, industria, referenze, news)
+    - testi marketing e descrizioni commerciali generali.
+    Non usarlo per istruzioni di manutenzione, installazione o codici di errore.
     - query: parole chiave della ricerca."""
     print(f"[TOOL] Query in ingresso: '{query}'")
     
@@ -286,8 +290,12 @@ def cerca_sito_web(query: str) -> str:
 
 @tool
 def cerca_manuali(query: str) -> str:
-    """Usa questo tool per trovare informazioni commerciali, contatti, o ambienti di applicazione (es. sale operatorie, ospedali, uso industriale).
-    Non usarlo per dati tecnici numerici o modelli specifici.
+    """Usa questo tool per cercare nei MANUALI TECNICI (PDF):
+    - procedure di installazione e messa in servizio
+    - manutenzione, pulizia, sostituzione filtri
+    - codici allarme / errore, significato e possibili cause
+    - regolazioni, setpoint, parametri di funzionamento.
+    Non usarlo per scegliere il modello dal catalogo o per semplici descrizioni commerciali.
     - query: parole chiave della ricerca."""
     print(f"\n[TOOL] Esecuzione CERCA_MANUALI")
     print(f"[TOOL] Query in ingresso: '{query}'")
@@ -559,61 +567,6 @@ def consulta_dizionario_catalogo(parola_chiave: str) -> str:
 
     return f"Nessuna voce trovata per la parola chiave '{parola_chiave}'."
 
-dati_visivi_temporanei = None
-
-@tool
-def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "grafico", top_n: int = 5) -> str:
-    """Usa questo tool solo se l'utente scrive esplicitamente le parole 'grafico', 'diagramma' o 'tabella'.
-    Per ricerche normali usa 'cerca_catalogo_generico'.
-    - parametro_asse_y: nome esatto della colonna da analizzare.
-    - tipo_visualizzazione: 'grafico' o 'tabella'.
-    - top_n: numero di modelli da mostrare."""
-    global dati_visivi_temporanei
-    print(f"\n[TOOL] Esecuzione PREPARA_DATI_GRAFICO -> Asse Y: {parametro_asse_y} | Tipo: {tipo_visualizzazione}")
-
-    if df_catalogo is None:
-        return "Errore: database catalogo non caricato."
-
-    richiesta_esatta = parametro_asse_y.replace('_', ' ').strip().lower()
-    colonna_reale = None
-    
-    for col in colonne_catalogo:
-        if " ".join(col.split()).lower() == " ".join(richiesta_esatta.split()):
-            colonna_reale = col
-            break
-
-    if not colonna_reale:
-        return "Colonna non trovata. Chiedi all'utente di specificare meglio il parametro per il grafico."
-
-    df = df_catalogo.copy()
-    
-    def pulisci_numero(valore):
-        if isinstance(valore, str):
-            return valore.replace('.', '').replace(',', '.')
-        return valore
-        
-    df[colonna_reale] = df[colonna_reale].apply(pulisci_numero)
-    df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
-    
-    risultato = df.dropna(subset=[colonna_reale]).sort_values(by=colonna_reale, ascending=False).head(top_n)
-
-    # L'interruttore che decide cosa passeremo al frontend
-    tipo_scelto = "tabella" if tipo_visualizzazione == "tabella" else "grafico_barre"
-
-    dati_per_grafico = {
-        "tipo": tipo_scelto,
-        "titolo": colonna_reale,
-        "dati": []
-    }
-
-    for _, row in risultato.iterrows():
-        nome_modello = str(row.get("Modello PAL", "Sconosciuto"))
-        valore = float(row.get(colonna_reale, 0.0))
-        dati_per_grafico["dati"].append({"Modello": nome_modello, "Valore": valore})
-
-    dati_visivi_temporanei = dati_per_grafico
-
-    return "Analisi visiva pronta."
 
 @tool 
 def estrai_dati_dinamici(richiesta_utente: str) -> str:
@@ -705,7 +658,6 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
     - richiesta_utente: frase completa dell'utente."""
     print(f"\n[TOOL] Esecuzione GENERA_GRAFICO_AVANZATO -> Richiesta: '{richiesta_utente}'")
 
-    global dati_visivi_temporanei
 
     try:
         csv_path = CSV_GRAFICI_PATH
@@ -793,7 +745,6 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
         html_path = os.path.join(DIR_GRAFICI_SALVATI, nome_file)
 
         scatola_sicura["fig"].write_html(html_path, full_html=False, include_plotlyjs="cdn")
-        dati_visivi_temporanei = {"tipo": "grafico_html_file", "path": html_path}
 
         return "SUCCESSO: Grafico generato correttamente."
 
@@ -828,9 +779,6 @@ def should_continue(state: AgentState) -> str:
     return "end"
 
 def route_after_tool(state: AgentState) -> str:
-    global dati_visivi_temporanei
-    if dati_visivi_temporanei is not None:
-        return "end"
     return "agent"
 
 #4 FUNZIONI DI INTERFACCIA (APP)
@@ -865,20 +813,25 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Se nella richiesta è presente un codice modello esatto (es. 091-051), usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
 - Non usare 'consulta_dizionario_catalogo' se la domanda contiene il codice di un modello.
 
-6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
-- Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
+6. IF l'utente chiede informazioni su PRODOTTI o SOLUZIONI ZOPPELLARO, o su applicazioni generali (es. "climatizzatori per sale operatorie", "soluzioni per piscine coperte", "recuperatori di calore", "condizionatori roof-top", "referenze", "che cosa produce Zoppellaro"):
+- Usa ESCLUSIVAMENTE il tool 'cerca_sito_web'.
+- Riassumi in modo chiaro le informazioni trovate, citando i prodotti o le linee rilevanti.
 
-7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
-- Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
+7. IF l'utente fa domande su MANUTENZIONE, FILTRI, INSTALLAZIONE, AVVIAMENTO, CODICI DI ERRORE/ALLARME o regolazioni pratiche (es. "come si installa", "come si puliscono i filtri", "errore E1", "come impostare la temperatura"):
+- Usa ESCLUSIVAMENTE il tool 'cerca_manuali'.
+- Non usare 'cerca_sito_web' per queste domande.
 
-8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o una TABELLA visiva:
-- Usa il tool 'prepara_dati_grafico' SOLO E SOLTANTO SE l'utente ha scritto testualmente una di queste tre parole.
-- Per le ricerche normali usa sempre 'cerca_catalogo_generico'.
+8. IF l'utente chiede un grafico, diagramma o tabella basati direttamente su dati già estratti in CSV:
+- Usa il tool 'genera_grafico_avanzato'.
 
-9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati per Python":
+9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati", "salva CSV":
 - Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente.
 
-10. IF l'utente chiede di creare un GRAFICO o PLOTTARE i dati che sono stati estratti nel CSV:
+10. IF l'utente chiede prima un'estrazione e poi anche una visualizzazione dei dati:
+- Prima usa 'estrai_dati_dinamici'.
+- Solo in un messaggio successivo dell'utente usa 'genera_grafico_avanzato'.
+
+11. IF l'utente chiede di creare un GRAFICO o PLOTTARE i dati che sono stati estratti nel CSV:
 - Usa il tool 'genera_grafico_avanzato' passando la frase intera dell'utente.
 - Usa questo tool SOLO se esistono già dati estratti nel CSV.
 - Non descrivere il grafico a parole se puoi generarlo davvero.
@@ -886,11 +839,12 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
 - NON inventare parametri. Se non li sai, chiedili.
-- DIVIETO DI CALCOLO A VUOTO: Se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
+- DIVIETO DI CALCOLO A VUOTO: se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
 - DIVIETO DI JSON: Non rispondere mai mostrando codice JSON grezzo all'utente.
 - DIVIETO CHIAMATE MULTIPLE: Chiama UN SOLO tool alla volta, attendi il risultato, poi rispondi.
 - REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da qualsiasi tool, formula IMMEDIATAMENTE la risposta discorsiva per l'utente e fermati. Non richiamare lo stesso tool o altri tool per verifiche extra.
-- REGOLA DI PRIVACY: Non menzionare mai nomi di cartelle, percorsi di file o dettagli del sistema operativo nelle tue risposte.""")
+- REGOLA DI PRIVACY: Non menzionare mai nomi di cartelle, percorsi di file o dettagli del sistema operativo nelle tue risposte.
+- REGOLA 'ISTRUZIONE PER L'AI': quando ricevi una risposta da un tool che contiene la stringa "ISTRUZIONE PER L'AI", non mostrare quella parte all'utente; usala solo come guida interna per decidere il prossimo tool da chiamare.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
@@ -947,11 +901,14 @@ REGOLE GLOBALI:
             }
 
     nuovi_messaggi = result["messages"]
-
+    testo = msg.content
+    istr_marker = "ISTRUZIONE PER L'AI"
     risposta_assistente = ""
     for msg in reversed(nuovi_messaggi):
         if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
-            risposta_assistente = msg.content
+            if istr_marker in testo:
+                testo = testo.split(istr_marker)[0].strip()
+            risposta_assistente = testo
             break
 
     memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
@@ -963,9 +920,16 @@ REGOLE GLOBALI:
                 if tool['name'] not in tool_usati:
                     tool_usati.append(tool['name'])
 
-    global dati_visivi_temporanei
-    dati_da_esportare = dati_visivi_temporanei
-    dati_visivi_temporanei = None
+    dati_da_esportare = None
+
+    for msg in reversed(nuovi_messaggi):
+        if hasattr(msg, "content") and isinstance(msg.content, str):
+            contenuto_msg = msg.content.strip()
+            if contenuto_msg.startswith("SUCCESSO_GRAFICO::"):
+                percorso_file = contenuto_msg.split("SUCCESSO_GRAFICO::", 1)[1].strip()
+                dati_da_esportare = {"tipo": "grafico_html_file", "path": percorso_file}
+                if risposta_assistente == contenuto_msg:
+                    risposta_assistente = "Grafico generato correttamente."
 
     return {
         "testo": risposta_assistente,
@@ -1030,13 +994,12 @@ except Exception as e:
 
 tools = [cerca_catalogo_specifico, 
          cerca_catalogo_generico, 
-         cerca_sito_web, cerca_manuali, 
+         cerca_sito_web, #cerca_manuali, 
          calcola_fabbisogno_termico, 
          calcola_portata_aria, 
          calcola_consumo_elettrico, 
          verifica_prevalenza_canali,
          consulta_dizionario_catalogo,
-         #prepara_dati_grafico,
          estrai_dati_dinamici,
          genera_grafico_avanzato]
 
