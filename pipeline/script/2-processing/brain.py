@@ -184,6 +184,31 @@ def invoca_llm_con_failover(input_llm):
 
             llm, llm_con_tools, app = costruisci_motore_llm()
             print("[LLM] Motore ricostruito con la nuova API key")
+    
+def separa_testo_e_istruzioni(testo: str):
+    if not testo or not isinstance(testo, str):
+        return "", ""
+
+    marker = "ISTRUZIONE PER L'AI"
+    if marker in testo:
+        parti = testo.split(marker, 1)
+        testo_utente = parti[0].strip()
+        istruzione_interna = parti[1].strip(" :\n\t")
+        return testo_utente, istruzione_interna
+
+    return testo.strip(), ""
+
+def pulisci_risposta_tool_per_utente(testo: str) -> str:
+    testo_utente, _ = separa_testo_e_istruzioni(testo)
+
+    if not testo_utente:
+        return "Non sono riuscito a generare una risposta utile."
+
+    testo_utente = testo_utente.replace("Calcolo completato:", "").strip()
+    testo_utente = testo_utente.replace("SUCCESSO:", "").strip()
+    testo_utente = testo_utente.replace("ERRORE:", "Si è verificato un errore:").strip()
+
+    return testo_utente
 
 #2 DEFINIZIONE DEI TOOL
 
@@ -335,7 +360,7 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna
     print(f"\n[TOOL] Esecuzione CALCOLA_FABBISOGNO_TERMICO")
 
     if area_mq <= 0 or numero_persone < 0:
-        return "ISTRUZIONE PER L'AI: Dati incompleti o non validi. Chiedi all'utente metri quadri e numero persone corretti."
+        return "Per calcolare correttamente il fabbisogno termico mi servono metri quadri e numero di persone validi.\nISTRUZIONE PER L'AI: chiedi all'utente i dati mancanti o correggi quelli non validi."
 
     delta_t = abs(temp_esterna - temp_interna)
     print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} persone, T.Est: {temp_esterna}°, T.Int: {temp_interna}° (Delta: {delta_t}°), locale: {tipo_locale}")
@@ -362,10 +387,8 @@ def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna
     fabbisogno_kw = fabbisogno_totale_watt / 1000
 
     return (
-        f"Calcolo completato: {fabbisogno_kw:.2f} kW. "
-        f"ISTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. "
-        f"Inserisci come parametro_richiesto ESATTAMENTE 'Potenza frigorifera totale macchina' "
-        f"e inserisci {fabbisogno_kw:.2f} nel campo 'valore_target'."
+        f"Il fabbisogno termico stimato è di {fabbisogno_kw:.2f} kW.\n"
+        f"ISTRUZIONE PER L'AI: usa il tool 'cerca_catalogo_generico' con parametro_richiesto='Potenza frigorifera totale macchina', ordinamento='crescente', top_n=3, valore_target={fabbisogno_kw:.2f}"
     )
     
 @tool
@@ -379,7 +402,7 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
 
     if area_mq <= 0 or numero_persone <= 0:
         print("[TOOL] Dati numerici mancanti rilevati. Blocco dell'esecuzione.")
-        return "ISTRUZIONE PER L'AI: Dati incompleti. Fermati e chiedi all'utente i metri quadri e il numero di persone."
+        return "Per calcolare la portata d'aria mi servono almeno i metri quadri e il numero di persone.\nISTRUZIONE PER L'AI: fermati e chiedi all'utente i dati mancanti."
 
     if not tipo_locale or tipo_locale.strip() == "":
         tipo_locale = "generico"
@@ -406,9 +429,8 @@ def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str =
     print(f"[TOOL] MAX tra Persone ({fabbisogno_persone}) e Volume ({fabbisogno_volumetrico}) = {portata_finale} m3/h")
 
     return (
-        f"Calcolo completato: {portata_finale:.2f} m3/h. "
-        f"ISTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. "
-        f"Parametro: 'Portata Massima'. Target: {portata_finale:.2f}."
+        f"La portata d'aria necessaria stimata è di {portata_finale:.2f} m3/h.\n"
+        f"ISTRUZIONE PER L'AI: usa il tool 'cerca_catalogo_generico' con parametro_richiesto='Portata Massima', ordinamento='crescente', top_n=3, valore_target={portata_finale:.2f}"
     )
 
 @tool
@@ -914,16 +936,18 @@ REGOLE GLOBALI:
             }
 
     nuovi_messaggi = result["messages"]
-    istr_marker = "ISTRUZIONE PER LAI"
     risposta_grezza = ""
+    istruzione_interna_tool = ""
 
     for msg in reversed(nuovi_messaggi):
         if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
             testo = msg.content.strip()
-            if istr_marker in testo:
-                testo = testo.split(istr_marker)[0].strip()
-            risposta_grezza = testo
-            break
+            testo_utente, testo_istruzioni = separa_testo_e_istruzioni(testo)
+
+            if testo_utente:
+                risposta_grezza = testo_utente
+                istruzione_interna_tool = testo_istruzioni
+                break
 
     tool_usati = []
     for msg in nuovi_messaggi:
@@ -935,28 +959,32 @@ REGOLE GLOBALI:
 
     prompt_finale = f"""
     Sei un assistente tecnico HVAC.
-    Riscrivi il risultato del tool in italiano naturale, breve e utile per l'utente.
 
-    Regole:
-    - Non essere meccanico.
-    - Non ripetere etichette come "Calcolo completato" o "Modello X:".
-    - Se il risultato indica compatibilità, inizia con una conferma chiara.
-    - Se il risultato è un valore numerico, spiega in una frase cosa significa.
-    - Se utile, aggiungi una sola frase finale di orientamento pratico.
-    - Non inventare dati.
-    - Mantieni il contenuto tecnico corretto.
+    Devi trasformare il risultato di un tool in una risposta finale per l'utente, in italiano naturale.
+
+    REGOLE OBBLIGATORIE:
+    - Non mostrare mai istruzioni interne, ragionamenti, nomi di tool o frasi come "usa il tool", "ISTRUZIONE PER L'AI", "parametro_richiesto", "valore_target".
+    - Non parlare mai come se stessi programmando un workflow.
+    - Non menzionare JSON, campi, variabili, API, file interni o percorsi.
+    - Se il testo contiene un risultato numerico, spiegalo in modo semplice e diretto.
+    - Se il testo contiene un elenco di modelli, presentalo come consiglio tecnico.
+    - Se il testo contiene un errore, trasformalo in un messaggio chiaro per l'utente.
+    - Mantieni solo le informazioni utili all'utente finale.
+    - Non inventare dati non presenti.
+    - Non aggiungere premesse inutili.
+    - Se il risultato è già chiaro, miglioralo soltanto nello stile.
 
     Domanda utente:
     {user_query}
 
-    Risultato tool:
+    Risultato tool pulito:
     {risposta_grezza}
     """
 
     try:
-        risposta_assistente = llm.invoke([SystemMessage(content=prompt_finale)]).content.strip()
+        risposta_assistente = invoca_llm_con_failover([SystemMessage(content=prompt_finale)]).content.strip()
     except Exception:
-        risposta_assistente = risposta_grezza
+        risposta_assistente = pulisci_risposta_tool_per_utente(risposta_grezza)
 
     memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
 
