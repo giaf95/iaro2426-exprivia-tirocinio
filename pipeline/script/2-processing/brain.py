@@ -901,18 +901,16 @@ REGOLE GLOBALI:
             }
 
     nuovi_messaggi = result["messages"]
-    istr_marker = "ISTRUZIONE PER L'AI"
-    risposta_assistente = ""
+    istr_marker = "ISTRUZIONE PER LAI"
+    risposta_grezza = ""
 
     for msg in reversed(nuovi_messaggi):
         if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
             testo = msg.content.strip()
             if istr_marker in testo:
                 testo = testo.split(istr_marker)[0].strip()
-            risposta_assistente = testo
+            risposta_grezza = testo
             break
-
-    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
 
     tool_usati = []
     for msg in nuovi_messaggi:
@@ -921,6 +919,33 @@ REGOLE GLOBALI:
                 nome_tool = tool.get("name")
                 if nome_tool and nome_tool not in tool_usati:
                     tool_usati.append(nome_tool)
+
+    prompt_finale = f"""
+    Sei un assistente tecnico HVAC.
+    Riscrivi il risultato del tool in italiano naturale, breve e utile per l'utente.
+
+    Regole:
+    - Non essere meccanico.
+    - Non ripetere etichette come "Calcolo completato" o "Modello X:".
+    - Se il risultato indica compatibilità, inizia con una conferma chiara.
+    - Se il risultato è un valore numerico, spiega in una frase cosa significa.
+    - Se utile, aggiungi una sola frase finale di orientamento pratico.
+    - Non inventare dati.
+    - Mantieni il contenuto tecnico corretto.
+
+    Domanda utente:
+    {user_query}
+
+    Risultato tool:
+    {risposta_grezza}
+    """
+
+    try:
+        risposta_assistente = llm.invoke([SystemMessage(content=prompt_finale)]).content.strip()
+    except Exception:
+        risposta_assistente = risposta_grezza
+
+    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
 
     dati_da_esportare = None
 
