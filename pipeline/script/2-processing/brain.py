@@ -184,7 +184,29 @@ def invoca_llm_con_failover(input_llm):
 
             llm, llm_con_tools, app = costruisci_motore_llm()
             print("[LLM] Motore ricostruito con la nuova API key")
-    
+
+def invoca_llm_con_tools_failover(messages):
+    global llm, llm_con_tools, app, indice_api_corrente
+
+    ultimo_errore = None
+
+    while True:
+        try:
+            return llm_con_tools.invoke(messages)
+        except Exception as e:
+            ultimo_errore = e
+
+            if not errore_quota_google(e):
+                raise
+
+            print(f"[LLM] Quota esaurita sulla chiave corrente: {e}")
+
+            if not passa_alla_prossima_api_key():
+                raise ultimo_errore
+
+            llm, llm_con_tools, app = costruisci_motore_llm()
+            print("[LLM] Motore ricostruito con la nuova API key")
+
 def separa_testo_e_istruzioni(testo: str):
     if not testo or not isinstance(testo, str):
         return "", ""
@@ -798,7 +820,7 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
 def call_model(state: AgentState):
     print("\nL'intelligenza artificiale sta analizzando i dati e generating la risposta...")
     messages = state["messages"]
-    response = llm_con_tools.invoke(messages)
+    response = invoca_llm_con_tools_failover(messages)
     
     # printa a schermo le intenzioni dell'ai per capire cosa sta combinando
     if response.tool_calls:
@@ -878,8 +900,9 @@ REGOLE GLOBALI:
 - NON inventare parametri. Se non li sai, chiedili.
 - DIVIETO DI CALCOLO A VUOTO: se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
 - DIVIETO DI JSON: Non rispondere mai mostrando codice JSON grezzo all'utente.
-- DIVIETO CHIAMATE MULTIPLE: Chiama UN SOLO tool alla volta, attendi il risultato, poi rispondi.
-- REGOLA ANTI-LOOP: Dopo aver ricevuto i dati da qualsiasi tool, formula IMMEDIATAMENTE la risposta discorsiva per l'utente e fermati. Non richiamare lo stesso tool o altri tool per verifiche extra.
+- REGOLA TOOL: Chiama un solo tool per volta.
+- ECCEZIONE CONTROLLATA: se il risultato del tool contiene la stringa "ISTRUZIONE PER L'AI", non fermarti; usa quella istruzione come guida per chiamare ESATTAMENTE il tool successivo necessario.
+- REGOLA ANTI-LOOP: dopo il tool successivo richiesto dall'istruzione interna, formula la risposta finale per l'utente e fermati. Non eseguire catene extra o verifiche aggiuntive.
 - REGOLA DI PRIVACY: Non menzionare mai nomi di cartelle, percorsi di file o dettagli del sistema operativo nelle tue risposte.
 - REGOLA 'ISTRUZIONE PER L'AI': quando ricevi una risposta da un tool che contiene la stringa "ISTRUZIONE PER L'AI", non mostrare quella parte all'utente; usala solo come guida interna per decidere il prossimo tool da chiamare.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
