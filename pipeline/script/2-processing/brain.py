@@ -854,13 +854,13 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Temp. Esterna, 4. Temp. Interna.
 - SE l'utente fa un follow-up, recupera i dati invariati dalla cronologia.
 - SE CONTINUA A MANCARE UN DATO: Fermati e chiedilo.
-- SE HAI TUTTI I DATI: Usa 'calcola_fabbisogno_termico' e poi 'cerca_catalogo_generico'.
+- SE HAI TUTTI I DATI: Usa prima 'calcola_fabbisogno_termico'. Se il tool restituisce una "ISTRUZIONE PER L'AI", esegui subito il passo successivo richiesto e completa la selezione del modello prima di rispondere all'utente.
 
 2. IF l'utente chiede un modello per VENTILARE o garantire il RICAMBIO D'ARIA:
 - Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Tipo di locale.
 - SE l'utente sta aggiornando i numeri, recupera i dati invariati dalla chat.
 - SE MANCA UN DATO: Fermati e chiedilo.
-- SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli.
+- SE HAI TUTTI I DATI: Usa prima 'calcola_portata_aria'. Se il tool restituisce una "ISTRUZIONE PER L'AI", esegui subito il passo successivo richiesto e completa la selezione del modello prima di rispondere all'utente. Mostra SEMPRE almeno 3 modelli se disponibili.
 
 3. IF l'utente chiede il CONSUMO ELETTRICO o quale modello CONVIENE/CONSUMA MENO:
 - Usa 'calcola_consumo_elettrico'. NON cercare l'efficienza prima, il tool la troverà da solo.
@@ -929,7 +929,7 @@ REGOLE GLOBALI:
     while True:
         try:
             start_time = time.time()
-            result = app.invoke(current_state, recursion_limit=10)
+            result = app.invoke(current_state, recursion_limit=15)
             end_time = time.time()
             tempo_trascorso = end_time - start_time
 
@@ -969,10 +969,21 @@ REGOLE GLOBALI:
             testo = msg.content.strip()
             testo_utente, testo_istruzioni = separa_testo_e_istruzioni(testo)
 
-            if testo_utente:
+            if testo_utente and "ISTRUZIONE PER L'AI" not in testo:
                 risposta_grezza = testo_utente
                 istruzione_interna_tool = testo_istruzioni
                 break
+
+    if not risposta_grezza:
+        for msg in reversed(nuovi_messaggi):
+            if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
+                testo = msg.content.strip()
+                testo_utente, testo_istruzioni = separa_testo_e_istruzioni(testo)
+
+                if testo_utente:
+                    risposta_grezza = testo_utente
+                    istruzione_interna_tool = testo_istruzioni
+                    break
 
     tool_usati = []
     for msg in nuovi_messaggi:
@@ -981,6 +992,9 @@ REGOLE GLOBALI:
                 nome_tool = tool.get("name")
                 if nome_tool and nome_tool not in tool_usati:
                     tool_usati.append(nome_tool)
+
+    if "calcola_fabbisogno_termico" in tool_usati and "cerca_catalogo_generico" not in tool_usati:
+        risposta_grezza = (risposta_grezza + "\nNon sono ancora riuscito a completare la selezione automatica del modello dal catalogo.").strip()
 
     prompt_finale = f"""
     Sei un assistente tecnico HVAC.
@@ -992,12 +1006,15 @@ REGOLE GLOBALI:
     - Non parlare mai come se stessi programmando un workflow.
     - Non menzionare JSON, campi, variabili, API, file interni o percorsi.
     - Se il testo contiene un risultato numerico, spiegalo in modo semplice e diretto.
-    - Se il testo contiene un elenco di modelli, presentalo come consiglio tecnico.
+    - Se il testo contiene un elenco di modelli, presentalo come consiglio tecnico finale.
+    - Se il testo contiene un elenco di modelli, cita chiaramente i modelli trovati e il parametro confrontato.
     - Se il testo contiene un errore, trasformalo in un messaggio chiaro per l'utente.
     - Mantieni solo le informazioni utili all'utente finale.
     - Non inventare dati non presenti.
     - Non aggiungere premesse inutili.
     - Se il risultato è già chiaro, miglioralo soltanto nello stile.
+    - Se sono presenti modelli compatibili o idonei, non chiedere di nuovo dati già forniti dall'utente.
+    - Se il risultato contiene 3 modelli, presentali in elenco puntato.
 
     Domanda utente:
     {user_query}
@@ -1007,7 +1024,10 @@ REGOLE GLOBALI:
     """
 
     try:
-        risposta_assistente = invoca_llm_con_failover([SystemMessage(content=prompt_finale)]).content.strip()
+        risposta_assistente = invoca_llm_con_failover([
+            SystemMessage(content="Riscrivi in italiano naturale la risposta tecnica per l'utente finale."),
+            HumanMessage(content=prompt_finale)
+        ]).content.strip()
     except Exception:
         risposta_assistente = pulisci_risposta_tool_per_utente(risposta_grezza)
 
