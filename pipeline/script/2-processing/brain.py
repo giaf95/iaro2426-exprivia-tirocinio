@@ -697,7 +697,7 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         Lista esatta delle colonne del dataframe df:
         {colonne_reali}
 
-        COMPILA QUESTO TEMPLATE ESATTO sostituendo solo NOMECOLONNA, SEGNO e NUMERO:
+        COMPILA ESATTAMENTE QUESTE DUE RIGHE, senza aggiungerne altre:
 
         ```python
         colonna_numerica = converti_serie_numerica(df["NOMECOLONNA"])
@@ -708,10 +708,13 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         1. NOMECOLONNA deve essere una delle colonne presenti nella lista.
         2. SEGNO deve essere uno tra >, >=, <, <=, ==.
         3. NUMERO deve essere preso dalla richiesta utente.
-        4. Non aggiungere spiegazioni.
-        5. Non usare str.replace(".", "") o conversioni numeriche personalizzate.
-        6. Usa obbligatoriamente converti_serie_numerica.
-        7. Restituisci solo codice Python valido, preferibilmente dentro un blocco ```python.
+        4. La variabile finale deve chiamarsi obbligatoriamente dfrisultato.
+        5. Non aggiungere spiegazioni.
+        6. Non aggiungere print.
+        7. Non usare altre variabili finali.
+        8. Non usare str.replace(".", "") o conversioni numeriche personalizzate.
+        9. Usa obbligatoriamente converti_serie_numerica.
+        10. Restituisci solo codice Python valido, preferibilmente dentro un blocco ```python.
         """
         
         risposta_llm = invoca_llm_con_failover(prompt)
@@ -732,20 +735,32 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
             "pd": pd,
             "df": df_lavoro,
             "converti_serie_numerica": converti_serie_numerica,
-            "dfRisultato": None,
             "dfrisultato": None
         }
+
+        print(f"[DEBUG TOOL] Colonne disponibili: {colonne_reali}")
         exec(codice_pulito, {}, scatola_sicura)
+        
+        if "colonna_numerica" in scatola_sicura:
+            colonna_debug = scatola_sicura["colonna_numerica"]
+            if hasattr(colonna_debug, "notna"):
+                print(f"[DEBUG TOOL] Valori numerici validi nella colonna: {int(colonna_debug.notna().sum())}")
 
-        df_finale = scatola_sicura.get("df_risultato")
+        df_finale = scatola_sicura.get("dfrisultato")
+
         if df_finale is None:
-            df_finale = scatola_sicura.get("dfrisultato")
+            return "ERRORE: il codice generato non ha creato la variabile 'dfrisultato'."
 
-        if df_finale is not None and isinstance(df_finale, pd.DataFrame):
-            df_finale.to_csv(path_salvataggio, index=False)
-            return "SUCCESSO: Dati estratti e salvati in data/3-user_interface/dataframe_grafico.csv"
+        if not isinstance(df_finale, pd.DataFrame):
+            return "ERRORE: 'dfrisultato' non è un DataFrame Pandas valido."
 
-        return "ERRORE: Generazione dataframe fallita."
+        print(f"[DEBUG TOOL] Righe trovate: {len(df_finale)}")
+
+        if df_finale.empty:
+            return "Nessun modello trovato con i filtri richiesti."
+
+        df_finale.to_csv(path_salvataggio, index=False)
+        return f"SUCCESSO: Dati estratti e salvati in data/3-user_interface/dataframe_grafico.csv. Righe trovate: {len(df_finale)}"
         
     except PermissionError:
         return "ERRORE CRITICO: Chiudi il file CSV se aperto in Excel e riprova."
