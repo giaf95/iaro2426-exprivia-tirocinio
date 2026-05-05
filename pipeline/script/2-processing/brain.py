@@ -119,13 +119,31 @@ def trova_colonna_modello() -> str | None:
 
 
 def converti_serie_numerica(serie):
-    return pd.to_numeric(
-        serie.astype(str)
-        .str.replace(".", "", regex=False)
-        .str.replace(",", ".", regex=False)
-        .str.strip(),
-        errors="coerce"
-    )
+    def converti_valore(val):
+        if pd.isna(val):
+            return None
+
+        s = str(val).strip()
+        if s == "" or s.lower() == "nan":
+            return None
+
+        if "," in s:
+            s = s.replace(".", "").replace(",", ".")
+            return pd.to_numeric(s, errors="coerce")
+
+        if "." in s:
+            parti = s.split(".")
+            if len(parti) == 2 and parti[1].isdigit():
+                if len(parti[1]) == 3 and parti[0].isdigit():
+                    s = s.replace(".", "")
+                else:
+                    return pd.to_numeric(s, errors="coerce")
+            else:
+                s = s.replace(".", "")
+
+        return pd.to_numeric(s, errors="coerce")
+
+    return serie.apply(converti_valore)
 
 indice_api_corrente = 0
 
@@ -682,7 +700,8 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         COMPILA QUESTO TEMPLATE ESATTO sostituendo solo NOMECOLONNA, SEGNO e NUMERO:
 
         ```python
-        dfrisultato = df[pd.to_numeric(df["NOMECOLONNA"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False), errors="coerce") SEGNO NUMERO]
+        colonna_numerica = converti_serie_numerica(df["NOMECOLONNA"])
+        dfrisultato = df[colonna_numerica SEGNO NUMERO]
         ```
 
         REGOLE DI COMPILAZIONE:
@@ -690,7 +709,9 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         2. SEGNO deve essere uno tra >, >=, <, <=, ==.
         3. NUMERO deve essere preso dalla richiesta utente.
         4. Non aggiungere spiegazioni.
-        5. Restituisci solo codice Python valido, preferibilmente dentro un blocco ```python.
+        5. Non usare str.replace(".", "") o conversioni numeriche personalizzate.
+        6. Usa obbligatoriamente converti_serie_numerica.
+        7. Restituisci solo codice Python valido, preferibilmente dentro un blocco ```python.
         """
         
         risposta_llm = invoca_llm_con_failover(prompt)
@@ -710,7 +731,8 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         scatola_sicura = {
             "pd": pd,
             "df": df_lavoro,
-            "df_risultato": None,
+            "converti_serie_numerica": converti_serie_numerica,
+            "dfRisultato": None,
             "dfrisultato": None
         }
         exec(codice_pulito, {}, scatola_sicura)
