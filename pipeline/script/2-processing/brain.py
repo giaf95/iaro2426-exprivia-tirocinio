@@ -232,6 +232,31 @@ def pulisci_risposta_tool_per_utente(testo: str) -> str:
 
     return testo_utente
 
+def esegui_istruzione_interna_tool(istruzione: str) -> str:
+    if not istruzione or not isinstance(istruzione, str):
+        return ""
+
+    testo = istruzione.strip()
+
+    match_catalogo = re.search(
+        r"usa il tool 'cerca_catalogo_generico' con parametro_richiesto='([^']+)', ordinamento='([^']+)', top_n=(\d+), valore_target=([0-9]+(?:\.[0-9]+)?)",
+        testo,
+        re.IGNORECASE
+    )
+    if match_catalogo:
+        parametro_richiesto = match_catalogo.group(1)
+        ordinamento = match_catalogo.group(2)
+        top_n = int(match_catalogo.group(3))
+        valore_target = float(match_catalogo.group(4))
+        return cerca_catalogo_generico.invoke({
+            "parametro_richiesto": parametro_richiesto,
+            "ordinamento": ordinamento,
+            "top_n": top_n,
+            "valore_target": valore_target
+        })
+
+    return ""
+
 #2 DEFINIZIONE DEI TOOL
 
 @tool
@@ -969,21 +994,12 @@ REGOLE GLOBALI:
             testo = msg.content.strip()
             testo_utente, testo_istruzioni = separa_testo_e_istruzioni(testo)
 
-            if testo_utente and "ISTRUZIONE PER L'AI" not in testo:
-                risposta_grezza = testo_utente
+            if testo_istruzioni:
                 istruzione_interna_tool = testo_istruzioni
+
+            if testo_utente:
+                risposta_grezza = testo_utente
                 break
-
-    if not risposta_grezza:
-        for msg in reversed(nuovi_messaggi):
-            if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
-                testo = msg.content.strip()
-                testo_utente, testo_istruzioni = separa_testo_e_istruzioni(testo)
-
-                if testo_utente:
-                    risposta_grezza = testo_utente
-                    istruzione_interna_tool = testo_istruzioni
-                    break
 
     tool_usati = []
     for msg in nuovi_messaggi:
@@ -992,6 +1008,13 @@ REGOLE GLOBALI:
                 nome_tool = tool.get("name")
                 if nome_tool and nome_tool not in tool_usati:
                     tool_usati.append(nome_tool)
+
+    if istruzione_interna_tool:
+        risultato_tool_successivo = esegui_istruzione_interna_tool(istruzione_interna_tool)
+        if risultato_tool_successivo:
+            risposta_grezza = risultato_tool_successivo
+            if "cerca_catalogo_generico" not in tool_usati:
+                tool_usati.append("cerca_catalogo_generico")
 
     if "calcola_fabbisogno_termico" in tool_usati and "cerca_catalogo_generico" not in tool_usati:
         risposta_grezza = (risposta_grezza + "\nNon sono ancora riuscito a completare la selezione automatica del modello dal catalogo.").strip()
@@ -1006,7 +1029,8 @@ REGOLE GLOBALI:
     - Non parlare mai come se stessi programmando un workflow.
     - Non menzionare JSON, campi, variabili, API, file interni o percorsi.
     - Se il testo contiene un risultato numerico, spiegalo in modo semplice e diretto.
-    - Se il testo contiene un elenco di modelli, presentalo come consiglio tecnico finale.
+    - Se il testo contiene un elenco di modelli, presentalo come consiglio tecnico finale, senza dire che non sei riuscito a completare il processo.
+    - Se il testo contiene righe del tipo "- Modello ...", trasformale in elenco puntato leggibile.
     - Se il testo contiene un elenco di modelli, cita chiaramente i modelli trovati e il parametro confrontato.
     - Se il testo contiene un errore, trasformalo in un messaggio chiaro per l'utente.
     - Mantieni solo le informazioni utili all'utente finale.
