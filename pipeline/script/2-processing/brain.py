@@ -915,8 +915,10 @@ REGOLE GLOBALI:
     messaggi_completi = memoria_conversazioni[chat_id]
     messaggi_per_llm = [messaggi_completi[0]]
 
-    if len(messaggi_completi) > 7:
-        messaggi_per_llm.extend(messaggi_completi[-6:])
+    MAX_MESSAGGI_CONTESTO = 12
+
+    if len(messaggi_completi) > MAX_MESSAGGI_CONTESTO + 1:
+        messaggi_per_llm.extend(messaggi_completi[-MAX_MESSAGGI_CONTESTO:])
     else:
         messaggi_per_llm.extend(messaggi_completi[1:])
 
