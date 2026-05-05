@@ -1,22 +1,27 @@
 import os
+import sys
 import sqlite3
 import time
 import pandas as pd
 import difflib
 import re
 import time
-import time
 from typing import Annotated, List, TypedDict
 import operator
 from langgraph.graph import StateGraph, END
-from langchain_ollama import ChatOllama
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 import plotly.express as px
-import plotly.express as px
+
+# aggiunge la cartella script al path per importare config.py
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_cartella_script = os.path.dirname(_script_dir)
+sys.path.insert(0, _cartella_script)
+from config import CATALOGO_PATH, GOOGLE_API_KEYS, CSV_GRAFICI_PATH, DIR_GRAFICI_SALVATI
 
 class AgentState(TypedDict):
     messages: Annotated[List, operator.add]
@@ -66,205 +71,318 @@ def carica_database(nome_cartella_db: str, kb_name: str, embeddings) -> Chroma:
             
     return db_scelto
 
+def trova_colonna_esatta_o_simile(nome_richiesto: str, colonne_disponibili: list[str]) -> str | None:
+    if not nome_richiesto:
+        return None
+
+    nome_norm = " ".join(str(nome_richiesto).strip().lower().split())
+
+    for col in colonne_disponibili:
+        col_norm = " ".join(str(col).strip().lower().split())
+        if col_norm == nome_norm:
+            return col
+
+    punteggi = {}
+    parole_richiesta = re.sub(r'[^a-zA-Z0-9]', ' ', nome_norm).split()
+
+    for col in colonne_disponibili:
+        col_norm = re.sub(r'[^a-zA-Z0-9]', ' ', str(col).lower())
+        parole_col = col_norm.split()
+        score = 0
+        for pr in parole_richiesta:
+            for pc in parole_col:
+                if pr == pc or pr in pc:
+                    score += 1
+        if score > 0:
+            punteggi[col] = score
+
+    if not punteggi:
+        return None
+
+    return max(punteggi, key=punteggi.get)
+
+
+def trova_colonna_modello() -> str | None:
+    candidati = [
+        "Modello Prodotto",
+        "Modello PAL",
+        "Modello",
+        "Codice Modello"
+    ]
+
+    for nome in candidati:
+        col = trova_colonna_esatta_o_simile(nome, colonne_catalogo)
+        if col:
+            return col
+
+    return None
+
+
+def converti_serie_numerica(serie):
+    def converti_valore(val):
+        if pd.isna(val):
+            return None
+
+        s = str(val).strip()
+        if s == "" or s.lower() == "nan":
+            return None
+
+        if "," in s:
+            s = s.replace(".", "").replace(",", ".")
+            return pd.to_numeric(s, errors="coerce")
+
+        if "." in s:
+            parti = s.split(".")
+            if len(parti) == 2 and parti[1].isdigit():
+                if len(parti[1]) == 3 and parti[0].isdigit():
+                    s = s.replace(".", "")
+                else:
+                    return pd.to_numeric(s, errors="coerce")
+            else:
+                s = s.replace(".", "")
+
+        return pd.to_numeric(s, errors="coerce")
+
+    return serie.apply(converti_valore)
+
+indice_api_corrente = 0
+
+def crea_llm_con_chiave(api_key: str):
+    return ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash-lite",
+        temperature=0,
+        google_api_key=api_key
+    )
+
+def ottieni_api_key_corrente():
+    global indice_api_corrente
+    if not GOOGLE_API_KEYS:
+        raise ValueError("Nessuna GOOGLE_API_KEY configurata.")
+    return GOOGLE_API_KEYS[indice_api_corrente]
+
+def passa_alla_prossima_api_key():
+    global indice_api_corrente
+    if indice_api_corrente + 1 >= len(GOOGLE_API_KEYS):
+        return False
+    indice_api_corrente += 1
+    print(f"[LLM] Switch API key -> indice {indice_api_corrente + 1}/{len(GOOGLE_API_KEYS)}")
+    return True
+
+def reset_api_key_index():
+    global indice_api_corrente
+    indice_api_corrente = 0
+
+def errore_quota_google(exc: Exception) -> bool:
+    testo = str(exc)
+    return (
+        "RESOURCE_EXHAUSTED" in testo
+        or "429" in testo
+        or "GenerateRequestsPerDayPerProjectPerModel-FreeTier" in testo
+        or "quota exceeded" in testo.lower()
+    )
+
+def invoca_llm_con_failover(input_llm):
+    global llm, llm_con_tools, app, indice_api_corrente
+
+    ultimo_errore = None
+
+    while True:
+        try:
+            return llm.invoke(input_llm)
+        except Exception as e:
+            ultimo_errore = e
+
+            if not errore_quota_google(e):
+                raise
+
+            print(f"[LLM] Quota esaurita sulla chiave corrente: {e}")
+
+            if not passa_alla_prossima_api_key():
+                raise ultimo_errore
+
+            llm, llm_con_tools, app = costruisci_motore_llm()
+            print("[LLM] Motore ricostruito con la nuova API key")
+
+def invoca_llm_con_tools_failover(messages):
+    global llm, llm_con_tools, app, indice_api_corrente
+
+    ultimo_errore = None
+
+    while True:
+        try:
+            return llm_con_tools.invoke(messages)
+        except Exception as e:
+            ultimo_errore = e
+
+            if not errore_quota_google(e):
+                raise
+
+            print(f"[LLM] Quota esaurita sulla chiave corrente: {e}")
+
+            if not passa_alla_prossima_api_key():
+                raise ultimo_errore
+
+            llm, llm_con_tools, app = costruisci_motore_llm()
+            print("[LLM] Motore ricostruito con la nuova API key")
+
+def separa_testo_e_istruzioni(testo: str):
+    if not testo or not isinstance(testo, str):
+        return "", ""
+
+    marker = "ISTRUZIONE PER L'AI"
+    if marker in testo:
+        parti = testo.split(marker, 1)
+        testo_utente = parti[0].strip()
+        istruzione_interna = parti[1].strip(" :\n\t")
+        return testo_utente, istruzione_interna
+
+    return testo.strip(), ""
+
+def pulisci_risposta_tool_per_utente(testo: str) -> str:
+    testo_utente, _ = separa_testo_e_istruzioni(testo)
+
+    if not testo_utente:
+        return "Non sono riuscito a generare una risposta utile."
+
+    testo_utente = testo_utente.replace("Calcolo completato:", "").strip()
+    testo_utente = testo_utente.replace("SUCCESSO:", "").strip()
+    testo_utente = testo_utente.replace("ERRORE:", "Si è verificato un errore:").strip()
+
+    return testo_utente
+
+def esegui_istruzione_interna_tool(istruzione: str) -> str:
+    if not istruzione or not isinstance(istruzione, str):
+        return ""
+
+    testo = istruzione.strip()
+
+    match_catalogo = re.search(
+        r"usa il tool 'cerca_catalogo_generico' con parametro_richiesto='([^']+)', ordinamento='([^']+)', top_n=(\d+), valore_target=([0-9]+(?:\.[0-9]+)?)",
+        testo,
+        re.IGNORECASE
+    )
+    if match_catalogo:
+        parametro_richiesto = match_catalogo.group(1)
+        ordinamento = match_catalogo.group(2)
+        top_n = int(match_catalogo.group(3))
+        valore_target = float(match_catalogo.group(4))
+        return cerca_catalogo_generico.invoke({
+            "parametro_richiesto": parametro_richiesto,
+            "ordinamento": ordinamento,
+            "top_n": top_n,
+            "valore_target": valore_target
+        })
+
+    return ""
+
 #2 DEFINIZIONE DEI TOOL
 
 @tool
 def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
-    """Usa questo tool SEMPRE e SOLO quando l'utente nomina un MODELLO SPECIFICO (es. '091-051' o '061-035').
-    ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - modello: estrai SOLO il codice esatto (es. '091-051').
-    - parametro: la grandezza fisica da cercare (es. 'Portata Massima Mandata')."""
-def cerca_catalogo_specifico(modello: str, parametro: str = "Tutti") -> str:
-    """Usa questo tool SEMPRE e SOLO quando l'utente nomina un MODELLO SPECIFICO (es. '091-051' o '061-035').
-    ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - modello: estrai SOLO il codice esatto (es. '091-051').
-    - parametro: la grandezza fisica da cercare (es. 'Portata Massima Mandata')."""
+    """Usa questo tool quando l'utente nomina un modello specifico (es. 7AI-183E).
+    - modello: il codice del modello.
+    - parametro: la grandezza fisica da cercare. Se non specificata, chiedila all'utente."""
     print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_SPECIFICO")
-    print(f"[TOOL] Ricerca chirurgica -> Modello: '{modello}' | Parametro: '{parametro}'")
-    print(f"[TOOL] Ricerca chirurgica -> Modello: '{modello}' | Parametro: '{parametro}'")
-    
+    print(f"[TOOL] Ricerca chirurgica -> Modello: {modello} | Parametro: {parametro}")
+
     if df_catalogo is None:
-        return "Errore: file Excel non caricato."
-    
-    # pulizia del codice cercato
+        return "Errore: file catalogo non caricato."
+
+    colonna_modello = trova_colonna_modello()
+    if not colonna_modello:
+        return "Errore: impossibile trovare la colonna del modello nel catalogo."
+
     codice_pulito = modello.upper().replace("MODELLO", "").strip()
-    codice_pulito = modello.upper().replace("MODELLO", "").strip()
-    
-    # cerca la riga esatta nel DataFrame Pandas
-    df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
-    
+
+    df_modello = df_catalogo[
+        df_catalogo[colonna_modello].astype(str).str.upper().str.contains(codice_pulito, na=False)
+    ]
+
     if df_modello.empty:
-        return f"Modello {codice_pulito} non trovato nel catalogo Excel."
-        
-    # salvagente anti-crash se l'AI dimentica il parametro
+        return f"Modello {codice_pulito} non trovato nel catalogo."
+
     if parametro == "Tutti" or parametro.strip() == "":
-         return f"Hai trovato il modello {codice_pulito}, ma non hai estratto il parametro richiesto! Chiedi all'utente cosa vuole sapere di preciso (es. dimensioni, peso, portata)."
-         
-        
-    # salvagente anti-crash se l'AI dimentica il parametro
-    if parametro == "Tutti" or parametro.strip() == "":
-         return f"Hai trovato il modello {codice_pulito}, ma non hai estratto il parametro richiesto! Chiedi all'utente cosa vuole sapere di preciso (es. dimensioni, peso, portata)."
-         
-    # cerca le colonne che contengono la parola richiesta
-    richiesta_pulita = parametro.lower().strip()
-    richiesta_pulita = parametro.lower().strip()
-    colonne_trovate = [col for col in colonne_catalogo if richiesta_pulita in str(col).lower()]
-    
-    if not colonne_trovate:
-         return f"Il parametro '{parametro}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
-         return f"Il parametro '{parametro}' non esiste nel catalogo. Dì all'utente di specificare meglio la parola chiave."
-         
-    # estrae tutti i parametri trovati
-    risultati = []
-    for col in colonne_trovate:
-        valore = df_modello.iloc[0].get(col, "N/D")
-        risultati.append(f"- {col}: {valore}")
-        
-    return f"Dati tecnici per il modello {codice_pulito}:\n" + "\n".join(risultati)
+        return (
+            f"Modello {codice_pulito} trovato. "
+            f"Chiedi all'utente quale parametro vuole conoscere."
+        )
+
+    colonna_reale = trova_colonna_esatta_o_simile(parametro, colonne_catalogo)
+    if not colonna_reale:
+        return (
+            f"Il parametro '{parametro}' non esiste nel catalogo. "
+            f"Chiedi all'utente di specificare meglio."
+        )
+
+    valore = df_modello.iloc[0].get(colonna_reale, "ND")
+
+    return (
+        f"Dati tecnici per il modello {codice_pulito}:\n"
+        f"- {colonna_reale}: {valore}"
+    )
 
 @tool
 def cerca_catalogo_generico(parametro_richiesto: str, ordinamento: str = "decrescente", top_n: int = 3, valore_target: float = None) -> str:
-    """Usa questo tool ESCLUSIVAMENTE per domande analitiche e matematiche sul catalogo.
-    REGOLA FONDAMENTALE: Usa SOLO i parametri richiesti.
-    PARAMETRI:
-    - 'parametro_richiesto': Inserisci ESATTAMENTE il nome della colonna.
-    - 'ordinamento': 'crescente' o 'decrescente'.
-    - 'top_n': il numero di modelli da restituire.
-    - 'valore_target': (OPZIONALE) Se l'utente o il Calcolatore ti chiedono un modello per coprire un certo fabbisogno in kW, inserisci qui il numero. Il tool filtrerà i modelli adatti."""
-    print(f"\n[TOOL] Esecuzione cerca_catalogo_generico")
-    print(f"[TOOL] Estrazione -> Parametro: '{parametro_richiesto}', Ordine: '{ordinamento}', Top: {top_n}")
+    """Usa questo tool per domande analitiche e comparative sul catalogo.
+    - parametro_richiesto: nome della colonna da analizzare.
+    - ordinamento: 'crescente' o 'decrescente'.
+    - top_n: numero di modelli da restituire.
+    - valore_target: opzionale, filtra i modelli con valore uguale o superiore a questo numero."""
+    print(f"\n[TOOL] Esecuzione CERCA_CATALOGO_GENERICO")
+    print(f"[TOOL] Estrazione -> Parametro: {parametro_richiesto}, Ordine: {ordinamento}, Top: {top_n}, Target: {valore_target}")
 
     if df_catalogo is None:
-        return "Errore: file Excel non caricato."
+        return "Errore: file catalogo non caricato."
 
-    # rimuove i finti trattini bassi che l'llm inventa spesso
-    richiesta_esatta = parametro_richiesto.replace('_', ' ').strip().lower()
-    colonna_reale = None
-    
-    for col in colonne_catalogo:
-        col_pulita_spazi = " ".join(col.split()).lower()
-        richiesta_pulita_spazi = " ".join(richiesta_esatta.split())
-        if col_pulita_spazi == richiesta_pulita_spazi:
-            colonna_reale = col
-            break
+    colonna_modello = trova_colonna_modello()
+    if not colonna_modello:
+        return "Errore: impossibile trovare la colonna del modello nel catalogo."
 
-    # piano b se la colonna non matcha esattamente
+    colonna_reale = trova_colonna_esatta_o_simile(parametro_richiesto, colonne_catalogo)
     if not colonna_reale:
-        richiesta_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', parametro_richiesto).lower()
-        parole_richiesta = []
-        for p in richiesta_pulita.split():
-            if len(p) > 0:
-                parole_richiesta.append(p)
-        
-        # assegna un punteggio ad ogni colonna in base a quante parole combaciano
-        punteggi = {}
-        for col in colonne_catalogo:
-            col_pulita = re.sub(r'[^a-zA-Z0-9]', ' ', col).lower()
-            parole_col = col_pulita.split()
-            
-            score = 0
-            for pr in parole_richiesta:
-                for pc in parole_col:
-                    if pr == pc or pr in pc:
-                        score = score + 1
-            
-            if score > 0:
-                punteggi[col] = score
-
-        if len(punteggi) == 0:
-            match_simili = difflib.get_close_matches(parametro_richiesto.replace('_', ' '), list(colonne_catalogo), n=5, cutoff=0.1)
-            
-            if len(match_simili) > 0:
-                opzioni = match_simili
-            else:
-                opzioni = colonne_catalogo[:5]
-                
-            testo_opzioni = ""
-            for opt in opzioni:
-                testo_opzioni = testo_opzioni + "- " + opt + "\n"
-                
-            return "Dì all'utente ESATTAMENTE questo: 'Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n" + testo_opzioni + "'"
-
-        max_score = 0
-        for val in punteggi.values():
-            if val > max_score:
-                max_score = val
-                
-        soglia = len(parole_richiesta) * 0.5
-        if soglia < 1:
-            soglia = 1
-        
-        migliori_colonne = []
-        for col, score in punteggi.items():
-            if score == max_score and score >= soglia:
-                migliori_colonne.append(col)
-
-        # se c'e un pareggio chiede aiuto all'utente
-        if len(migliori_colonne) > 1:
-            if valore_target is not None:
-                # Se c'è un target, siamo in un flusso automatico: forza la prima opzione
-                colonna_reale = migliori_colonne[0]
-            else:
-                testo_opzioni = ""
-                for opt in migliori_colonne:
-                    testo_opzioni = testo_opzioni + "- " + opt + "\n"
-                return "Dì all'utente ESATTAMENTE questo: 'Il parametro è ambiguo. Per favore, copia e incolla ESATTAMENTE una di queste opzioni nella chat:\n" + testo_opzioni + "'"
-            
-        elif len(migliori_colonne) == 1:
-            colonna_reale = migliori_colonne[0]
-            print(f"[TOOL] Match parziale trovato: '{parametro_richiesto}' diventerà '{colonna_reale}'")
-        else:
-            return "Nessuna colonna valida trovata. Chiedi all'utente di riformulare la domanda."
-    else:
-        print(f"[TOOL] Match ESATTO trovato per '{colonna_reale}'")
+        opzioni = "\n".join([f"- {c}" for c in colonne_catalogo[:15]])
+        return (
+            "Nessuna colonna valida trovata. "
+            "Chiedi all'utente di riformulare oppure di scegliere una di queste opzioni:\n"
+            f"{opzioni}"
+        )
 
     df = df_catalogo.copy()
-    
-    # fix artigianale per convertire i numeri col punto stile italiano
-    def pulisci_numero(valore):
-        if isinstance(valore, str):
-            valore_senza_punti = valore.replace('.', '')
-            valore_con_punto_decimale = valore_senza_punti.replace(',', '.')
-            return valore_con_punto_decimale
-        else:
-            return valore
-            
-    df[colonna_reale] = df[colonna_reale].apply(pulisci_numero)
-    df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
-    
+    df[colonna_reale] = converti_serie_numerica(df[colonna_reale])
     risultato = df.dropna(subset=[colonna_reale])
 
-    # ricerca a target
+    if risultato.empty:
+        return f"Nessun valore numerico valido trovato per il parametro '{colonna_reale}'."
+
     if valore_target is not None:
-        # tieni solo i modelli con potenza uguale o superiore al target richiesto
         risultato = risultato[risultato[colonna_reale] >= valore_target]
-        # ordina in modo crescente per dare il modello appena sufficiente
         risultato = risultato.sort_values(by=colonna_reale, ascending=True)
     else:
-        # vecchia logica per i massimi e minimi assoluti
-        ordinamento_minuscolo = ordinamento.strip().lower()
-        if ordinamento_minuscolo == "crescente":
-            deve_crescere = True
-        else:
-            deve_crescere = False
-        risultato = risultato.sort_values(by=colonna_reale, ascending=deve_crescere)
+        ordine = ordinamento.strip().lower()
+        ascending = True if ordine == "crescente" else False
+        risultato = risultato.sort_values(by=colonna_reale, ascending=ascending)
 
     risultato = risultato.head(top_n)
 
-    # crea l'elenco testuale per evitare che l'llm si confonda leggendo una tabella
-    testo_finale = ""
-    for index, row in risultato.iterrows():
-        nome_modello = row.get("Modello PAL", "Sconosciuto")
-        valore = row.get(colonna_reale, "N/D")
-        testo_finale = testo_finale + f"- Modello: {nome_modello} | Valore: {valore}\n"
+    if risultato.empty:
+        return f"Nessun modello trovato per il parametro '{colonna_reale}' con i filtri richiesti."
 
-    return testo_finale
+    righe = []
+    for _, row in risultato.iterrows():
+        nome_modello = row.get(colonna_modello, "Sconosciuto")
+        valore = row.get(colonna_reale, "ND")
+        righe.append(f"- Modello {nome_modello}: {colonna_reale} = {valore}")
 
+    return "\n".join(righe)
 
 @tool
 def cerca_sito_web(query: str) -> str:
-    """Usa questo tool per cercare procedure passo-passo, guide all'installazione, troubleshooting e codici di errore.
-    REGOLA FERREA: Usa un UNICO parametro stringa chiamato 'query' contenente le parole chiave."""
+    """Usa questo tool per cercare informazioni dal SITO ZOPPELLARO:
+    - descrizioni di prodotti e soluzioni (es. unità per sale operatorie, deumidificatori per piscine, roof-top, recuperatori di calore)
+    - categorie applicative (ospedali, piscine, aeroporti, industria, referenze, news)
+    - testi marketing e descrizioni commerciali generali.
+    Non usarlo per istruzioni di manutenzione, installazione o codici di errore.
+    - query: parole chiave della ricerca."""
     print(f"[TOOL] Query in ingresso: '{query}'")
     
     if not db_web:
@@ -277,9 +395,13 @@ def cerca_sito_web(query: str) -> str:
 
 @tool
 def cerca_manuali(query: str) -> str:
-    """Usa questo tool per trovare informazioni commerciali, contatti, o AMBIENTI DI APPLICAZIONE (es. sale operatorie, ospedali, uso industriale).
-    QUANDO NON USARLO: Non usarlo per cercare dati tecnici numerici o modelli.
-    REGOLA FERREA: Usa un UNICO parametro stringa chiamato 'query'."""
+    """Usa questo tool per cercare nei MANUALI TECNICI (PDF):
+    - procedure di installazione e messa in servizio
+    - manutenzione, pulizia, sostituzione filtri
+    - codici allarme / errore, significato e possibili cause
+    - regolazioni, setpoint, parametri di funzionamento.
+    Non usarlo per scegliere il modello dal catalogo o per semplici descrizioni commerciali.
+    - query: parole chiave della ricerca."""
     print(f"\n[TOOL] Esecuzione CERCA_MANUALI")
     print(f"[TOOL] Query in ingresso: '{query}'")
     
@@ -292,96 +414,95 @@ def cerca_manuali(query: str) -> str:
     return testo_finale
 
 @tool
-def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, delta_t: float, tipo_locale: str) -> str:
-    """Usa questo tool per calcolare i kW (potenza frigorifera/termica) necessari per condizionare una stanza.
-    Se l'utente non fornisce questi dati, CHIEDILI prima di usare il tool.
-    PARAMETRI:
-    - area_mq: metri quadri della stanza (es. 30).
-    - numero_persone: quante persone occupano la stanza (es. 50).
-    - delta_t: differenza di temperatura tra esterno e interno in gradi (es. fuori 35, dentro 20 = delta_t di 15).
-    - tipo_locale: es. 'discoteca', 'ufficio', 'residenziale', 'palestra'."""
+def calcola_fabbisogno_termico(area_mq: float, numero_persone: int, temp_esterna: float, temp_interna: float, tipo_locale: str) -> str:
+    """Usa questo tool per calcolare i kW necessari per condizionare una stanza.
+    Non chiamare questo tool se l'utente non ha fornito esplicitamente tutti e quattro i valori numerici (mq, persone, temp. esterna, temp. interna).
+    - area_mq: metri quadri della stanza.
+    - numero_persone: quante persone occupano la stanza.
+    - temp_esterna: temperatura in gradi all'esterno (es. 35).
+    - temp_interna: temperatura desiderata all'interno (es. 22).
+    - tipo_locale: es. 'discoteca', 'ufficio', 'ristorante'."""
     print(f"\n[TOOL] Esecuzione CALCOLA_FABBISOGNO_TERMICO")
-    
-    # faccio calcolare il Delta T a Python, non all'AI
+
+    if area_mq <= 0 or numero_persone < 0:
+        return "Per calcolare correttamente il fabbisogno termico mi servono metri quadri e numero di persone validi.\nISTRUZIONE PER L'AI: chiedi all'utente i dati mancanti o correggi quelli non validi."
+
     delta_t = abs(temp_esterna - temp_interna)
     print(f"[TOOL] Dati: {area_mq}mq, {numero_persone} persone, T.Est: {temp_esterna}°, T.Int: {temp_interna}° (Delta: {delta_t}°), locale: {tipo_locale}")
 
-    # 1. Carico Base Strutturale (W/mq)
-    w_mq = 100 # Default per residenziale/uffici
-    tipo_locale_low = tipo_locale.lower()
+    w_mq = 100
+    tipo_locale_low = str(tipo_locale).lower()
     if "discoteca" in tipo_locale_low or "palestra" in tipo_locale_low or "industria" in tipo_locale_low:
         w_mq = 150
 
     carico_base = area_mq * w_mq
 
-    # 2. Carico Persone (W/persona) - a riposo emettono meno, in discoteca/palestra emettono molto calore
     w_persona = 100
     if "discoteca" in tipo_locale_low or "palestra" in tipo_locale_low:
         w_persona = 250
 
     carico_persone = numero_persone * w_persona
 
-    # 3. Moltiplicatore Delta T (aumenta del 5% per ogni grado di sbalzo termico oltre i 10°C)
     moltiplicatore_delta = 1.0
     if delta_t > 10:
         gradi_extra = delta_t - 10
         moltiplicatore_delta = 1.0 + (gradi_extra * 0.05)
 
-    # Calcolo Finale
     fabbisogno_totale_watt = (carico_base + carico_persone) * moltiplicatore_delta
     fabbisogno_kw = fabbisogno_totale_watt / 1000
 
-    return f"Calcolo completato: {fabbisogno_kw:.2f} kW. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Inserisci come parametro_richiesto ESATTAMENTE 'Potenza frigorifera totale macchina' e inserisci {fabbisogno_kw:.2f} nel campo 'valore_target'."
-
-@tool
-def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str) -> str:
-    """Usa questo tool per calcolare il fabbisogno di ventilazione (m3/h).
-    REGOLA ANTI-INVENZIONE: Se l'utente NON ti ha scritto i numeri esatti nel messaggio, DEVI passare 0 (zero) ai parametri area_mq e numero_persone.
-    PARAMETRI:
-    - area_mq: metri quadri (inserisci 0 se non forniti).
-    - numero_persone: quantità di persone (inserisci 0 se non fornite).
-    - tipo_locale: es. 'scuola', 'palestra', 'ufficio'."""
-    print(f"\n[TOOL] Esecuzione CALCOLA_PORTATA_ARIA")
+    return (
+        f"Il fabbisogno termico stimato è di {fabbisogno_kw:.2f} kW.\n"
+        f"ISTRUZIONE PER L'AI: usa il tool 'cerca_catalogo_generico' con parametro_richiesto='Potenza frigorifera totale macchina', ordinamento='crescente', top_n=3, valore_target={fabbisogno_kw:.2f}"
+    )
     
-    #guardrail
-    if area_mq <= 0 or numero_persone <= 0:
-        print("[TOOL] Dati mancanti rilevati. Blocco dell'esecuzione.")
-        return "ISTRUZIONE PER L'AI: Dati incompleti. FERMATI e NON usare il catalogo generico. Rispondi all'utente chiedendo di fornirti i metri quadri e il numero di persone."
+@tool
+def calcola_portata_aria(area_mq: float, numero_persone: int, tipo_locale: str = "") -> str:
+    """Usa questo tool per calcolare il fabbisogno di ventilazione (m3/h).
+    Non chiamare questo tool se l'utente non ha fornito esplicitamente i valori numerici: passa 0 se un dato non e' disponibile.
+    - area_mq: metri quadri (inserisci 0 se non forniti).
+    - numero_persone: quantita' di persone (inserisci 0 se non fornite).
+    - tipo_locale: es. 'scuola', 'palestra', 'ufficio'. (lascia "" se non specificato)."""
+    print(f"\n[TOOL] Esecuzione CALCOLA_PORTATA_ARIA")
 
-    # 1. Calcolo basato sulle persone (Fabbisogno per persona)
-    m3h_persona = 40 # Standard uffici/residenziale
+    if area_mq <= 0 or numero_persone <= 0:
+        print("[TOOL] Dati numerici mancanti rilevati. Blocco dell'esecuzione.")
+        return "Per calcolare la portata d'aria mi servono almeno i metri quadri e il numero di persone.\nISTRUZIONE PER L'AI: fermati e chiedi all'utente i dati mancanti."
+
+    if not tipo_locale or tipo_locale.strip() == "":
+        tipo_locale = "generico"
+
+    m3h_persona = 40
     tipo_locale_low = tipo_locale.lower()
     if "palestra" in tipo_locale_low or "discoteca" in tipo_locale_low or "ristorante" in tipo_locale_low:
         m3h_persona = 60
-        
+
     fabbisogno_persone = numero_persone * m3h_persona
-    
-    # 2. Calcolo basato sui ricambi d'aria del volume (ACH)
-    altezza_media = 3.0 # Assumiamo 3 metri di altezza standard
+
+    altezza_media = 3.0
     volume = area_mq * altezza_media
-    
-    ach = 2.0 # Ricambi/ora standard
+
+    ach = 2.0
     if "scuola" in tipo_locale_low or "ristorante" in tipo_locale_low:
         ach = 4.0
     elif "palestra" in tipo_locale_low or "discoteca" in tipo_locale_low:
         ach = 6.0
-        
+
     fabbisogno_volumetrico = volume * ach
-    
-    # Prendi il valore più alto
-    # Prendi il valore più alto
     portata_finale = max(fabbisogno_persone, fabbisogno_volumetrico)
-    
+
     print(f"[TOOL] MAX tra Persone ({fabbisogno_persone}) e Volume ({fabbisogno_volumetrico}) = {portata_finale} m3/h")
 
-    return f"Calcolo completato: {portata_finale:.2f} m3/h. INSTRUZIONE PER L'AI: Ora usa il tool 'cerca_catalogo_generico'. Parametro: 'Portata Massima Mandata Standard'. Target: {portata_finale:.2f}."
+    return (
+        f"La portata d'aria necessaria stimata è di {portata_finale:.2f} m3/h.\n"
+        f"ISTRUZIONE PER L'AI: usa il tool 'cerca_catalogo_generico' con parametro_richiesto='Portata Massima', ordinamento='crescente', top_n=3, valore_target={portata_finale:.2f}"
+    )
 
 @tool
 def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) -> str:
-    """Usa questo tool per calcolare il consumo elettrico (kW assorbiti) di uno o più modelli.
-    PARAMETRI:
-    - codici_modelli: i codici dei modelli da analizzare. Se l'utente chiede un confronto tra più modelli, inseriscili tutti separati da virgola (es. 'modelloA, modelloB').
-    - kw_richiesti: (Opzionale) Estrai il numero di kW dal messaggio dell'utente. Se non specificato, lascia 0.0."""
+    """Usa questo tool per calcolare il consumo elettrico (kW assorbiti) di uno o piu modelli.
+    - codici_modelli: i codici dei modelli da analizzare. Per piu modelli, separali con virgola (es. 'modelloA, modelloB').
+    - kw_richiesti: (opzionale) kW specificati dall'utente. Se non indicati, lascia 0.0."""
     print(f"\n[TOOL] Esecuzione CALCOLA_CONSUMO_ELETTRICO -> Modelli: {codici_modelli} | Input kW: {kw_richiesti}")
 
     if df_catalogo is None:
@@ -390,73 +511,78 @@ def calcola_consumo_elettrico(codici_modelli: str, kw_richiesti: float = 0.0) ->
     if not codici_modelli or codici_modelli.strip() == "":
         return "Dati incompleti. Chiedi all'utente il codice del modello."
 
-    # 1. pulisce la stringa dell'AI e la divide in una lista (gestendo "e", "o", "oppure", virgole)
-    stringa_pulita = codici_modelli.lower().replace(' e ', ',').replace(' o ', ',').replace(' oppure ', ',')
-    lista_codici = [c.strip() for c in stringa_pulita.split(',') if c.strip()]
+    colonna_modello = trova_colonna_modello()
+    if not colonna_modello:
+        return "Errore: impossibile trovare la colonna del modello nel catalogo."
+
+    stringa_pulita = codici_modelli.lower().replace(" e ", ",").replace(" o ", ",").replace(" oppure ", ",")
+    lista_codici = [c.strip() for c in stringa_pulita.split(",") if c.strip()]
+
+    col_potenza = trova_colonna_esatta_o_simile("Potenza frigorifera totale macchina", colonne_catalogo)
+    eer_col = trova_colonna_esatta_o_simile("EER minimo", colonne_catalogo)
+    if not eer_col:
+        eer_col = trova_colonna_esatta_o_simile("EER compressori", colonne_catalogo)
+
+    cop_col = trova_colonna_esatta_o_simile("COP minimo", colonne_catalogo)
+    if not cop_col:
+        cop_col = trova_colonna_esatta_o_simile("COP compressori", colonne_catalogo)
 
     risultati_finali = []
 
-    # 2.ciclo for: calcola il consumo per ogni modello richiesto
     for codice_singolo in lista_codici:
         codice_pulito = codice_singolo.upper().replace("MODELLO", "").strip()
-        df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
+        df_modello = df_catalogo[df_catalogo[colonna_modello].astype(str).str.upper().str.contains(codice_pulito, na=False)]
 
         if df_modello.empty:
             risultati_finali.append(f"Modello {codice_pulito} non trovato nel catalogo.")
             continue
 
+        riga = df_modello.iloc[0]
         risultati = []
         kw_attuali = kw_richiesti
 
-        # auto-recupero
         if kw_attuali <= 0:
-            col_potenza = [col for col in colonne_catalogo if 'potenza frigorifera totale' in str(col).lower()]
-            if col_potenza:
-                val_potenza = df_modello.iloc[0].get(col_potenza[0], 0)
-                try:
-                    kw_attuali = float(str(val_potenza).replace(',', '.'))
-                    risultati.append(f"*(Nota: calcolo basato su potenza di targa di {kw_attuali} kW)*")
-                except:
-                    risultati_finali.append(f"Modello {codice_pulito}: Impossibile determinare i kW.")
-                    continue
-            else:
-                 risultati_finali.append(f"Modello {codice_pulito}: Impossibile determinare i kW.")
-                 continue
+            if not col_potenza:
+                risultati_finali.append(f"Modello {codice_pulito}: impossibile determinare i kW.")
+                continue
 
-        # estrazione di EER e COP
-        eer_col = [col for col in colonne_catalogo if 'eer' in str(col).lower()]
-        cop_col = [col for col in colonne_catalogo if 'cop' in str(col).lower()]
+            val_potenza = riga.get(col_potenza, 0)
+            potenza_num = converti_serie_numerica(pd.Series([val_potenza])).iloc[0]
+
+            if pd.isna(potenza_num) or potenza_num <= 0:
+                risultati_finali.append(f"Modello {codice_pulito}: impossibile determinare i kW.")
+                continue
+
+            kw_attuali = float(potenza_num)
+            risultati.append(f"Nota: calcolo basato su potenza di targa di {kw_attuali:.2f} kW.")
 
         if eer_col:
-            valore_eer = df_modello.iloc[0].get(eer_col[0], "N/D")
-            try:
-                eer_float = float(str(valore_eer).replace(',', '.'))
+            valore_eer = riga.get(eer_col, None)
+            eer_float = converti_serie_numerica(pd.Series([valore_eer])).iloc[0]
+            if pd.notna(eer_float) and eer_float > 0:
                 consumo_freddo = kw_attuali / eer_float
-                risultati.append(f"- Raffrescamento (EER {eer_float}): assorbe circa {consumo_freddo:.2f} kW elettrici.")
-            except:
-                pass
+                risultati.append(f"- Raffrescamento (EER {eer_float:.2f}): assorbe circa {consumo_freddo:.2f} kW elettrici.")
 
         if cop_col:
-            valore_cop = df_modello.iloc[0].get(cop_col[0], "N/D")
-            try:
-                cop_float = float(str(valore_cop).replace(',', '.'))
+            valore_cop = riga.get(cop_col, None)
+            cop_float = converti_serie_numerica(pd.Series([valore_cop])).iloc[0]
+            if pd.notna(cop_float) and cop_float > 0:
                 consumo_caldo = kw_attuali / cop_float
-                risultati.append(f"- Riscaldamento (COP {cop_float}): assorbe circa {consumo_caldo:.2f} kW elettrici.")
-            except:
-                pass
+                risultati.append(f"- Riscaldamento (COP {cop_float:.2f}): assorbe circa {consumo_caldo:.2f} kW elettrici.")
 
         if risultati:
-            risultati_finali.append(f"**Modello {codice_pulito}** (Carico: {kw_attuali} kW):\n" + "\n".join(risultati))
+            risultati_finali.append(f"Modello {codice_pulito} (Carico: {kw_attuali:.2f} kW):\n" + "\n".join(risultati))
         else:
             risultati_finali.append(f"Modello {codice_pulito}: dati di efficienza validi non trovati.")
 
+    return "\n\n".join(risultati_finali)
+
 @tool
-def verifica_prevalenza_canali(codici_modelli: str, prevalenza_richiesta_pa: float = 0.0) -> str:
-    """Usa questo tool per verificare se i modelli hanno abbastanza prevalenza per i canali dell'aria.
-    PARAMETRI:
-    - codici_modelli: i codici dei modelli separati da virgola (es. '061-035, 091-051').
-    - prevalenza_richiesta_pa: la perdita di carico in Pascal (Pa) dell'impianto. Se non specificata, lascia 0.0."""
-    print(f"\n[TOOL] Esecuzione VERIFICA_PREVALENZA -> Modelli: {codici_modelli} | Pascal: {prevalenza_richiesta_pa}")
+def verifica_prevalenza_canali(codici_modelli: str, pascal_persi_impianto: float = 0.0) -> str:
+    """Usa questo tool per verificare se la ventola del modello ha abbastanza prevalenza per superare la perdita di carico dei canali.
+    - codici_modelli: codici dei modelli separati da virgola (es. '061-035, 091-051').
+    - pascal_persi_impianto: valore in Pascal associato alle parole 'Pascal', 'Pa' o 'perdita di carico' nel messaggio. Se non specificato, lascia 0.0."""
+    print(f"\n[TOOL] Esecuzione VERIFICA_PREVALENZA -> Modelli: {codici_modelli} | Pascal: {pascal_persi_impianto}")
 
     if df_catalogo is None:
         return "Errore: database catalogo non caricato."
@@ -464,159 +590,89 @@ def verifica_prevalenza_canali(codici_modelli: str, prevalenza_richiesta_pa: flo
     if not codici_modelli or codici_modelli.strip() == "":
         return "Dati incompleti. Chiedi all'utente il codice del modello."
 
-    # pulisce la stringa base
-    stringa_pulita = codici_modelli.lower().replace(' e ', ',').replace(' o ', ',').replace(' oppure ', ',')
-    
-    # divide i modelli senza usare list comprehension
-    parti = stringa_pulita.split(',')
-    lista_codici = []
-    for p in parti:
-        if p.strip() != "":
-            lista_codici.append(p.strip())
+    colonna_modello = trova_colonna_modello()
+    if not colonna_modello:
+        return "Errore: impossibile trovare la colonna del modello nel catalogo."
+
+    col_prevalenza = trova_colonna_esatta_o_simile("Prevalenza Massima Mandata", colonne_catalogo)
+    if not col_prevalenza:
+        col_prevalenza = trova_colonna_esatta_o_simile("1 Pressione Massima", colonne_catalogo)
+
+    if not col_prevalenza:
+        return "Errore: impossibile trovare la colonna della prevalenza nel catalogo."
+
+    stringa_pulita = codici_modelli.lower().replace(" e ", ",").replace(" o ", ",").replace(" oppure ", ",")
+    lista_codici = [p.strip() for p in stringa_pulita.split(",") if p.strip() != ""]
 
     risultati_finali = []
 
-    # controlla ogni singolo modello
     for codice_singolo in lista_codici:
         codice_pulito = codice_singolo.upper().replace("MODELLO", "").strip()
-        df_modello = df_catalogo[df_catalogo['Modello PAL'].astype(str).str.upper().str.contains(codice_pulito, na=False)]
+        df_modello = df_catalogo[df_catalogo[colonna_modello].astype(str).str.upper().str.contains(codice_pulito, na=False)]
 
         if df_modello.empty:
             risultati_finali.append(f"Modello {codice_pulito} non trovato.")
             continue
 
-        # cerca la colonna della prevalenza
-        col_prevalenza = ""
-        for col in colonne_catalogo:
-            if 'prevalenza massima mandata' in str(col).lower():
-                col_prevalenza = col
-                break
+        valore_prev = df_modello.iloc[0].get(col_prevalenza, None)
+        prev_float = converti_serie_numerica(pd.Series([valore_prev])).iloc[0]
 
-        if col_prevalenza == "":
-            risultati_finali.append(f"Modello {codice_pulito}: impossibile trovare i dati di prevalenza.")
+        if pd.isna(prev_float):
+            risultati_finali.append(f"Modello {codice_pulito}: impossibile leggere il valore di prevalenza.")
             continue
 
-        valore_prev = df_modello.iloc[0].get(col_prevalenza, 0)
-        
-        try:
-            prev_float = float(str(valore_prev).replace(',', '.'))
-        except:
-            prev_float = 0.0
-
-        # confronta i valori
-        if prevalenza_richiesta_pa <= 0:
-            risultati_finali.append(f"Modello {codice_pulito}: ha una prevalenza massima di {prev_float} Pa (richiesta non specificata).")
+        if pascal_persi_impianto <= 0:
+            risultati_finali.append(f"Modello {codice_pulito}: ha una prevalenza massima di {prev_float:.2f} Pa (richiesta non specificata).")
         else:
-            if prev_float >= prevalenza_richiesta_pa:
-                risultati_finali.append(f"**Modello {codice_pulito}: COMPATIBILE.** Ha {prev_float} Pa, superiore ai {prevalenza_richiesta_pa} Pa richiesti.")
+            if prev_float >= pascal_persi_impianto:
+                risultati_finali.append(f"Modello {codice_pulito}: COMPATIBILE. Ha {prev_float:.2f} Pa, superiore ai {pascal_persi_impianto:.2f} Pa richiesti.")
             else:
-                risultati_finali.append(f"**Modello {codice_pulito}: NON COMPATIBILE.** Ha solo {prev_float} Pa, insufficiente per i {prevalenza_richiesta_pa} Pa richiesti.")
+                risultati_finali.append(f"Modello {codice_pulito}: NON COMPATIBILE. Ha solo {prev_float:.2f} Pa, insufficiente per i {pascal_persi_impianto:.2f} Pa richiesti.")
 
-    # unisce i risultati
-    testo_ritorno = ""
-    for r in risultati_finali:
-        testo_ritorno = testo_ritorno + r + "\n\n"
-    
-    return testo_ritorno.strip()
+    return "\n\n".join(risultati_finali)
 
 @tool
 def consulta_dizionario_catalogo(parola_chiave: str) -> str:
-    """Usa questo tool SOLO per spiegare il SIGNIFICATO di termini tecnici o acronimi (es. 'EER', 'prevalenza').
-    DIVIETO ASSOLUTO: VIETATO usare questo tool se l'utente nomina un MODELLO SPECIFICO (es. '091-051'). Per i modelli usa 'cerca_catalogo_specifico'.
-    ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - parola_chiave: la parola da cercare. OBBLIGATORIO."""
+    """Usa questo tool per spiegare il significato di termini tecnici o acronimi (es. 'EER', 'prevalenza', 'portata').
+    Non usarlo se l'utente ha gia fornito un codice modello specifico: in quel caso usa 'cerca_catalogo_specifico'.
+    - parola_chiave: il termine da cercare."""
     print(f"\n[TOOL] Esecuzione CONSULTA_DIZIONARIO -> Ricerca: '{parola_chiave}'")
 
-    # Percorso relativo sicuro
+    if not parola_chiave or parola_chiave.strip() == "":
+        return "Errore: Devi fornire una parola chiave per cercare nel dizionario."
+
     cartella_corrente = os.path.dirname(os.path.abspath(__file__))
     percorso_file = os.path.join(cartella_corrente, "..", "..", "data", "3-user_interface", "dizionario_catalogo.txt")
 
     try:
-        with open(percorso_file, 'r', encoding='utf-8') as f:
+        with open(percorso_file, "r", encoding="utf-8") as f:
             contenuto = f.read()
     except FileNotFoundError:
-        return "Errore: Il file 'dizionario_catalogo.txt' non è stato trovato. Avvisa l'utente."
+        return "Errore: Il file del dizionario non è stato trovato. Avvisa l'utente."
+    except UnicodeDecodeError:
+        with open(percorso_file, "r", encoding="latin-1") as f:
+            contenuto = f.read()
 
-    if parola_chiave and parola_chiave.strip() != "":
-        paragrafi = contenuto.split('\n\n')
-        risultati = []
-        
-        # ciclo for classico
-        for p in paragrafi:
-            if parola_chiave.lower() in p.lower():
-                risultati.append(p)
+    paragrafi = contenuto.split("\n\n")
+    risultati = []
+    parola = parola_chiave.strip().lower()
 
-        if len(risultati) > 0:
-            testo_ritorno = f"DATI ESTRATTI PER '{parola_chiave}':\n"
-            for r in risultati:
-                testo_ritorno = testo_ritorno + r + "\n\n"
-            
-            return testo_ritorno.strip()
-        else:
-            return f"Nessuna voce trovata per la parola chiave '{parola_chiave}'."
+    for p in paragrafi:
+        if parola in p.lower():
+            risultati.append(p.strip())
 
-    return "Errore: Devi fornire una parola chiave per cercare nel dizionario."
+    if risultati:
+        testo_ritorno = f"DATI ESTRATTI PER '{parola_chiave}':\n"
+        for r in risultati[:5]:
+            testo_ritorno = testo_ritorno + r + "\n\n"
+        return testo_ritorno.strip()
 
-dati_visivi_temporanei = None
+    return f"Nessuna voce trovata per la parola chiave '{parola_chiave}'."
 
-@tool
-def prepara_dati_grafico(parametro_asse_y: str, tipo_visualizzazione: str = "grafico", top_n: int = 5) -> str:
-    """Usa questo tool SOLO SE l'utente scrive ESPLICITAMENTE le parole 'grafico', 'diagramma' o 'tabella'.
-    DIVIETO ASSOLUTO: Se l'utente fa una ricerca normale (es. 'quali macchine...', 'mostrami i modelli...'), NON ESSERE PROATTIVO per abbellire la risposta: ti è VIETATO usare questo tool. Usa 'cerca_catalogo_generico'.
-    ARGOMENTI DA PASSARE DIRETTAMENTE:
-    - parametro_asse_y: Inserisci ESATTAMENTE il nome della colonna da analizzare.
-    - tipo_visualizzazione: Scrivi "grafico" se l'utente chiede un grafico/diagramma. Scrivi "tabella" se chiede una tabella.
-    - top_n: il numero di modelli da mostrare."""
-    global dati_visivi_temporanei
-    print(f"\n[TOOL] Esecuzione PREPARA_DATI_GRAFICO -> Asse Y: {parametro_asse_y} | Tipo: {tipo_visualizzazione}")
-
-    if df_catalogo is None:
-        return "Errore: database catalogo non caricato."
-
-    richiesta_esatta = parametro_asse_y.replace('_', ' ').strip().lower()
-    colonna_reale = None
-    
-    for col in colonne_catalogo:
-        if " ".join(col.split()).lower() == " ".join(richiesta_esatta.split()):
-            colonna_reale = col
-            break
-
-    if not colonna_reale:
-        return "Colonna non trovata. Chiedi all'utente di specificare meglio il parametro per il grafico."
-
-    df = df_catalogo.copy()
-    
-    def pulisci_numero(valore):
-        if isinstance(valore, str):
-            return valore.replace('.', '').replace(',', '.')
-        return valore
-        
-    df[colonna_reale] = df[colonna_reale].apply(pulisci_numero)
-    df[colonna_reale] = pd.to_numeric(df[colonna_reale], errors="coerce")
-    
-    risultato = df.dropna(subset=[colonna_reale]).sort_values(by=colonna_reale, ascending=False).head(top_n)
-
-    # L'interruttore che decide cosa passeremo al frontend
-    tipo_scelto = "tabella" if tipo_visualizzazione == "tabella" else "grafico_barre"
-
-    dati_per_grafico = {
-        "tipo": tipo_scelto,
-        "titolo": colonna_reale,
-        "dati": []
-    }
-
-    for _, row in risultato.iterrows():
-        nome_modello = str(row.get("Modello PAL", "Sconosciuto"))
-        valore = float(row.get(colonna_reale, 0.0))
-        dati_per_grafico["dati"].append({"Modello": nome_modello, "Valore": valore})
-
-    dati_visivi_temporanei = dati_per_grafico
-
-    return "Analisi visiva pronta."
 
 @tool 
 def estrai_dati_dinamici(richiesta_utente: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente chiede di elaborare i dati in modo complesso, estrarre file o creare nuovi dataframe personalizzati."""
+    """Usa questo tool quando l'utente chiede di elaborare i dati in modo complesso o estrarre file personalizzati dal catalogo."""
     global df_catalogo, llm
     print(f"\n[TOOL] Esecuzione ESTRAI_DATI_DINAMICI -> Richiesta: '{richiesta_utente}'")
     
@@ -624,120 +680,194 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
          return "Errore: database catalogo non caricato in memoria."
          
     try:
-        # Configurazione percorsi di output
-        cartella_corrente = os.path.dirname(os.path.abspath(__file__))
-        cartella_pipeline = os.path.dirname(os.path.dirname(cartella_corrente))
-        cartella_temp = os.path.join(cartella_pipeline, 'data', '1-preprocessing')
-        os.makedirs(cartella_temp, exist_ok=True)
-        path_salvataggio = os.path.join(cartella_temp, 'dataframe_grafico.csv')
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
+        cartella_destinazione = os.path.dirname(CSV_GRAFICI_PATH)
+        os.makedirs(cartella_destinazione, exist_ok=True)
+        path_salvataggio = CSV_GRAFICI_PATH 
         
-        # Pulizia preventiva degli spazi nei nomi delle colonne
         df_lavoro = df_catalogo.copy()
         df_lavoro.columns = df_lavoro.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
         colonne_reali = list(df_lavoro.columns)
         
         prompt = f"""
-        Sei un programmatore Python. Scrivi codice Pandas per questa richiesta: '{richiesta_utente}'
-        
-        Hai a disposizione il dataframe 'df'. 
-        Colonne disponibili: {colonne_reali}
-        
-        REGOLE VITALI:
-        1. Salva il risultato ESATTAMENTE nella variabile 'df_risultato'.
-        2. DEVI usare ESATTAMENTE i numeri e i valori scritti nella richiesta dell'utente. Se chiede maggiore di 900, DEVI scrivere > 900. NON inventare numeri.
-        3. NON importare librerie (niente import pandas). NON usare to_csv().
-        4. Scrivi SOLO il codice dentro i backtick ```python ... ```.
+        Scrivi un filtro Pandas in base a questa richiesta:
+        {richiesta_utente}
+
+        Lista esatta delle colonne del dataframe df:
+        {colonne_reali}
+
+        COMPILA QUESTO TEMPLATE ESATTO sostituendo solo NOMECOLONNA, SEGNO e NUMERO:
+
+        ```python
+        colonna_numerica = converti_serie_numerica(df["NOMECOLONNA"])
+        dfrisultato = df[colonna_numerica SEGNO NUMERO]
+        ```
+
+        REGOLE DI COMPILAZIONE:
+        1. NOMECOLONNA deve essere una delle colonne presenti nella lista.
+        2. SEGNO deve essere uno tra >, >=, <, <=, ==.
+        3. NUMERO deve essere preso dalla richiesta utente.
+        4. Non aggiungere spiegazioni.
+        5. Non usare str.replace(".", "") o conversioni numeriche personalizzate.
+        6. Usa obbligatoriamente converti_serie_numerica.
+        7. Restituisci solo codice Python valido, preferibilmente dentro un blocco ```python.
         """
         
-        risposta_llm = llm.invoke(prompt)
-        testo_risposta = risposta_llm.content
-        
-        # Estrazione sicura del codice generato
-        match = re.search(r"```python\n(.*?)\n```", testo_risposta, re.DOTALL)
-        codice_pulito = match.group(1).strip() if match else testo_risposta.replace("```python", "").replace("```", "").strip()
+        risposta_llm = invoca_llm_con_failover(prompt)
+
+        contenuto = risposta_llm.content.strip()
+        match = re.search(r"```python\s*(.*?)\s*```", contenuto, re.DOTALL)
+        if match:
+            codice_pulito = match.group(1).strip()
+        else:
+            codice_pulito = contenuto
+
+        if codice_pulito.startswith("python"):
+            codice_pulito = codice_pulito[len("python"):].strip()
             
         print(f"\n[DEBUG LLM] Codice Pandas generato:\n{codice_pulito}\n")
     
-        # Iniezione variabili nell'ambiente isolato
         scatola_sicura = {
             "pd": pd,
             "df": df_lavoro,
-            "df_risultato": None
+            "converti_serie_numerica": converti_serie_numerica,
+            "dfRisultato": None,
+            "dfrisultato": None
         }
-        
         exec(codice_pulito, {}, scatola_sicura)
+
         df_finale = scatola_sicura.get("df_risultato")
-        
-        if df_finale is None or not isinstance(df_finale, pd.DataFrame):
-            return "ERRORE: il codice non ha prodotto un dataframe valido nella variabile 'df_risultato'."
-        
-        # Salvataggio fisico del CSV
-        df_finale.to_csv(path_salvataggio, index=False)
-        return "SUCCESSO: I dati sono stati estratti e il file CSV è stato creato correttamente."
+        if df_finale is None:
+            df_finale = scatola_sicura.get("dfrisultato")
+
+        if df_finale is not None and isinstance(df_finale, pd.DataFrame):
+            df_finale.to_csv(path_salvataggio, index=False)
+            return "SUCCESSO: Dati estratti e salvati in data/3-user_interface/dataframe_grafico.csv"
+
+        return "ERRORE: Generazione dataframe fallita."
         
     except PermissionError:
-        return "ERRORE CRITICO: Il file CSV è aperto in un altro programma (es. Excel). Dì all'utente di CHIUDERE IL FILE e riprovare la richiesta."
+        return "ERRORE CRITICO: Chiudi il file CSV se aperto in Excel e riprova."
     except Exception as e:
+        errore_testo = str(e)
+
+        if "RESOURCE_EXHAUSTED" in errore_testo or "429" in errore_testo or "quota" in errore_testo.lower():
+            return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. Riprova dopo il reset giornaliero oppure cambia modello/API key."
+
         return f"ERRORE DI ESECUZIONE PYTHON: {e}"
 
 @tool
 def genera_grafico_avanzato(richiesta_utente: str) -> str:
-    """Usa questo tool ESCLUSIVAMENTE quando l'utente ti chiede di generare un grafico."""
-    global llm, dati_visivi_temporanei
-    
-    try:
-        # Caricamento del CSV (Task: caricare dal path fissato)
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
-        csv_path = os.path.join(pipeline_dir, 'data', '1-preprocessing', 'dataframe_grafico.csv')
-        
-        if not os.path.exists(csv_path):
-            return "ERRORE: File dati non trovato. Estrai prima i dati."
+    """Usa questo tool SOLO quando l'utente chiede esplicitamente di creare o mostrare un grafico
+    partendo dai dati già estratti nel file CSV generato da estrai_dati_dinamici.
+    - richiesta_utente: frase completa dell'utente."""
+    print(f"\n[TOOL] Esecuzione GENERA_GRAFICO_AVANZATO -> Richiesta: '{richiesta_utente}'")
 
-        df_temp = pd.read_csv(csv_path)
-        df_temp.columns = df_temp.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
+
+    try:
+        csv_path = CSV_GRAFICI_PATH
+
+        if not os.path.exists(csv_path):
+            return "ERRORE: File dataframe_grafico.csv non trovato. Prima devi estrarre i dati."
+
+        try:
+            df_temp = pd.read_csv(csv_path)
+        except UnicodeDecodeError:
+            df_temp = pd.read_csv(csv_path, encoding="latin-1")
+
+        if df_temp.empty:
+            return "ERRORE: Il file CSV esiste ma non contiene righe utili."
+
+        df_temp.columns = (
+            df_temp.columns
+            .astype(str)
+            .str.replace(r"\s+", " ", regex=True)
+            .str.strip()
+        )
+
         colonne = list(df_temp.columns)
-        
+
         prompt = f"""
-        Scrivi SOLO codice Python per un grafico Plotly. Richiesta: '{richiesta_utente}'
-        Usa 'df' (dataframe pronto) e 'px' (plotly.express). Colonne: {colonne}
-        REGOLA: Crea il grafico e assegnalo alla variabile 'fig'. NON usare fig.show() o salvataggi su disco.
-        """
-        
-        risposta_llm = llm.invoke(prompt)
-        codice = re.search(r"```python\n(.*?)\n```", risposta_llm.content, re.DOTALL)
-        codice_pulito = codice.group(1).strip() if codice else risposta_llm.content.strip()
-        
-        # Esecuzione in RAM
-        scatola_sicura = {"df": df_temp, "px": px}
+L'utente vuole un grafico basato su un dataframe Pandas già pronto.
+
+Richiesta utente:
+{richiesta_utente}
+
+Colonne reali del dataframe df:
+{colonne}
+
+REGOLE OBBLIGATORIE:
+1. Usa solo 'df' e 'px'.
+2. Crea ESATTAMENTE una variabile finale chiamata fig.
+3. Non usare print.
+4. Non usare fig.show().
+5. Non leggere file.
+6. Non creare dataframe di esempio.
+7. Usa solo colonne realmente presenti.
+8. Restituisci solo codice Python valido, preferibilmente dentro ```python.
+9. Se la richiesta è ambigua, crea un grafico a barre semplice usando la prima colonna testuale come asse x e la prima colonna numerica come asse y.
+10. Se possibile imposta anche un titolo chiaro con fig.update_layout(title="...").
+
+ESEMPI VALIDI:
+
+```python
+fig = px.bar(df, x="Modello Prodotto", y="Portata Massima", title="Portata Massima per modello")
+```
+
+```python
+fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grandezza Telaio", title="Portata vs Pressione")
+```
+"""
+
+        risposta_llm = invoca_llm_con_failover(prompt)
+
+        contenuto = risposta_llm.content.strip()
+        match = re.search(r"```python\s*(.*?)\s*```", contenuto, re.DOTALL)
+        if match:
+            codice_pulito = match.group(1).strip()
+        else:
+            codice_pulito = contenuto
+
+        if codice_pulito.startswith("python"):
+            codice_pulito = codice_pulito[len("python"):].strip()
+
+        print("[DEBUG LLM] Codice Plotly generato:")
+        print(codice_pulito)
+
+        scatola_sicura = {
+            "df": df_temp,
+            "px": px,
+            "pd": pd
+        }
+
         exec(codice_pulito, {}, scatola_sicura)
-        
-        if 'fig' in scatola_sicura:
-            cartella_grafici = os.path.join(pipeline_dir, 'data', '3-user_interface', 'grafici_salvati')
-            os.makedirs(cartella_grafici, exist_ok=True)
-            
-            # Genera un nome file unico usando il timestamp
-            nome_file = f"grafico_{int(time.time())}.html"
-            html_path = os.path.join(cartella_grafici, nome_file)
-            
-            # Salvataggio dell'HTML su disco
-            scatola_sicura['fig'].write_html(html_path, full_html=False, include_plotlyjs='cdn')
-            
-            dati_visivi_temporanei = {"tipo": "grafico_html_file", "path": html_path}
-            
-            return "SUCCESSO: Il grafico è stato generato e salvato."
-        
-        return "ERRORE: Il codice non ha prodotto la variabile 'fig'."
-            
+
+        if "fig" not in scatola_sicura:
+            return "ERRORE: Il modello non ha creato la variabile 'fig'."
+
+        os.makedirs(DIR_GRAFICI_SALVATI, exist_ok=True)
+        nome_file = f"grafico_{int(time.time())}.html"
+        html_path = os.path.join(DIR_GRAFICI_SALVATI, nome_file)
+
+        scatola_sicura["fig"].write_html(html_path, full_html=False, include_plotlyjs="cdn")
+
+        return f"SUCCESSO_GRAFICO::{html_path}"
+
     except Exception as e:
-        return f"ERRORE TECNICO: {e}"
+        errore_testo = str(e)
+
+        if "RESOURCE_EXHAUSTED" in errore_testo or "429" in errore_testo or "quota" in errore_testo.lower():
+            return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. Riprova dopo il reset giornaliero oppure cambia modello/API key."
+
+        return f"ERRORE: {e}"
     
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
 def call_model(state: AgentState):
     print("\nL'intelligenza artificiale sta analizzando i dati e generating la risposta...")
     messages = state["messages"]
-    response = llm_con_tools.invoke(messages)
+    response = invoca_llm_con_tools_failover(messages)
     
     # printa a schermo le intenzioni dell'ai per capire cosa sta combinando
     if response.tool_calls:
@@ -754,13 +884,15 @@ def should_continue(state: AgentState) -> str:
         return "tools"
     return "end"
 
+def route_after_tool(state: AgentState) -> str:
+    return "agent"
+
 #4 FUNZIONI DI INTERFACCIA (APP)
 
 memoria_conversazioni = {}
 
 def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
-    global memoria_conversazioni
-
+    global memorie_conversazioni, llm, llm_con_tools, app
 
     if chat_id not in memoria_conversazioni:
         istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico HVAC. Devi rispettare RIGOROSAMENTE questo albero decisionale (IF/THEN):
@@ -769,13 +901,13 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Temp. Esterna, 4. Temp. Interna.
 - SE l'utente fa un follow-up, recupera i dati invariati dalla cronologia.
 - SE CONTINUA A MANCARE UN DATO: Fermati e chiedilo.
-- SE HAI TUTTI I DATI: Usa 'calcola_fabbisogno_termico' e poi 'cerca_catalogo_generico'.
+- SE HAI TUTTI I DATI: Usa prima 'calcola_fabbisogno_termico'. Se il tool restituisce una "ISTRUZIONE PER L'AI", esegui subito il passo successivo richiesto e completa la selezione del modello prima di rispondere all'utente.
 
 2. IF l'utente chiede un modello per VENTILARE o garantire il RICAMBIO D'ARIA:
 - Controlla se hai: 1. Metri quadri, 2. Numero persone, 3. Tipo di locale.
 - SE l'utente sta aggiornando i numeri, recupera i dati invariati dalla chat.
 - SE MANCA UN DATO: Fermati e chiedilo.
-- SE HAI TUTTI I DATI: Usa 'calcola_portata_aria' e poi 'cerca_catalogo_generico'. Mostra SEMPRE almeno 3 modelli.
+- SE HAI TUTTI I DATI: Usa prima 'calcola_portata_aria'. Se il tool restituisce una "ISTRUZIONE PER L'AI", esegui subito il passo successivo richiesto e completa la selezione del modello prima di rispondere all'utente. Mostra SEMPRE almeno 3 modelli se disponibili.
 
 3. IF l'utente chiede il CONSUMO ELETTRICO o quale modello CONVIENE/CONSUMA MENO:
 - Usa 'calcola_consumo_elettrico'. NON cercare l'efficienza prima, il tool la troverà da solo.
@@ -785,31 +917,42 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 
 5. IF l'utente chiede un dato tecnico di un MODELLO SPECIFICO:
 - Se nella richiesta è presente un codice modello esatto (es. 091-051), usa ESCLUSIVAMENTE 'cerca_catalogo_specifico'.
-- È ASSOLUTAMENTE VIETATO usare 'consulta_dizionario_catalogo' se la domanda contiene il codice di un modello.
+- Non usare 'consulta_dizionario_catalogo' se la domanda contiene il codice di un modello.
 
-6. IF l'utente fa domande su manutenzione, filtri, installazione o "vapori/grassi":
-- Usa ESCLUSIVAMENTE 'cerca_manuali' o 'cerca_sito_web'.
+6. IF l'utente chiede informazioni su PRODOTTI o SOLUZIONI ZOPPELLARO, o su applicazioni generali (es. "climatizzatori per sale operatorie", "soluzioni per piscine coperte", "recuperatori di calore", "condizionatori roof-top", "referenze", "che cosa produce Zoppellaro"):
+- Usa ESCLUSIVAMENTE il tool 'cerca_sito_web'.
+- Riassumi in modo chiaro le informazioni trovate, citando i prodotti o le linee rilevanti.
 
-7. IF l'utente chiede spiegazioni tecniche, definizioni, o chiede se un parametro esiste nel catalogo (es. "rumorosità", "gas R32", "come viene misurato"):
-- Usa 'consulta_dizionario_catalogo'. NON USARE tool matematici.
+7. IF l'utente fa domande su MANUTENZIONE, FILTRI, INSTALLAZIONE, AVVIAMENTO, CODICI DI ERRORE/ALLARME o regolazioni pratiche (es. "come si installa", "come si puliscono i filtri", "errore E1", "come impostare la temperatura"):
+- Usa ESCLUSIVAMENTE il tool 'cerca_manuali'.
+- Non usare 'cerca_sito_web' per queste domande.
 
-8. IF l'utente chiede un GRAFICO, un DIAGRAMMA o una TABELLA visiva:
-- Usa il tool 'prepara_dati_grafico' SOLO E SOLTANTO SE l'utente ha scritto testualmente una di queste tre parole.
-- NON usare questo tool di tua iniziativa per "abbellire" i risultati. Per le ricerche normali sei OBBLIGATO a usare sempre 'cerca_catalogo_generico'.
+8. IF l'utente chiede un grafico, diagramma o tabella basati direttamente su dati già estratti in CSV:
+- Usa il tool 'genera_grafico_avanzato'.
 
-9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati per Python":
-- Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente in modo che possa generare il codice corretto.
+9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati", "salva CSV":
+- Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente.
 
-10. IF l'utente chiede di creare un GRAFICO, un DIAGRAMMA o PLOTTARE i dati che sono appena stati estratti o filtrati nel CSV:
+10. IF l'utente chiede prima un'estrazione e poi anche una visualizzazione dei dati:
+- Prima usa 'estrai_dati_dinamici'.
+- Solo in un messaggio successivo dell'utente usa 'genera_grafico_avanzato'.
+
+11. IF l'utente chiede di creare un GRAFICO o PLOTTARE i dati che sono stati estratti nel CSV:
 - Usa il tool 'genera_grafico_avanzato' passando la frase intera dell'utente.
+- Usa questo tool SOLO se esistono già dati estratti nel CSV.
+- Non descrivere il grafico a parole se puoi generarlo davvero.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
 - NON inventare parametri. Se non li sai, chiedili.
-- DIVIETO DI CALCOLO A VUOTO: Se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
-- DIVIETO DI JSON: È severamente vietato rispondere mostrando codice JSON grezzo all'utente.""")
+- DIVIETO DI CALCOLO A VUOTO: se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
+- DIVIETO DI JSON: Non rispondere mai mostrando codice JSON grezzo all'utente.
+- REGOLA TOOL: Chiama un solo tool per volta.
+- ECCEZIONE CONTROLLATA: se il risultato del tool contiene la stringa "ISTRUZIONE PER L'AI", non fermarti; usa quella istruzione come guida per chiamare ESATTAMENTE il tool successivo necessario.
+- REGOLA ANTI-LOOP: dopo il tool successivo richiesto dall'istruzione interna, formula la risposta finale per l'utente e fermati. Non eseguire catene extra o verifiche aggiuntive.
+- REGOLA DI PRIVACY: Non menzionare mai nomi di cartelle, percorsi di file o dettagli del sistema operativo nelle tue risposte.
+- REGOLA 'ISTRUZIONE PER L'AI': quando ricevi una risposta da un tool che contiene la stringa "ISTRUZIONE PER L'AI", non mostrare quella parte all'utente; usala solo come guida interna per decidere il prossimo tool da chiamare.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
-
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
 
@@ -819,55 +962,133 @@ REGOLE GLOBALI:
     messaggi_completi = memoria_conversazioni[chat_id]
     messaggi_per_llm = [messaggi_completi[0]]
 
-    if len(messaggi_completi) > 7:
-        messaggi_per_llm.extend(messaggi_completi[-6:])
+    MAX_MESSAGGI_CONTESTO = 12
+
+    if len(messaggi_completi) > MAX_MESSAGGI_CONTESTO + 1:
+        messaggi_per_llm.extend(messaggi_completi[-MAX_MESSAGGI_CONTESTO:])
     else:
         messaggi_per_llm.extend(messaggi_completi[1:])
 
     current_state = {"messages": messaggi_per_llm}
 
-    try:
-        # attiva il cronometro prima che l'llm inizi a pensare
-        start_time = time.time()
-        result = app.invoke(current_state, {"recursion_limit": 10})
-        end_time = time.time()
-        tempo_trascorso = end_time - start_time
-        print(f"\n[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
-    except Exception as e:
-        return {"testo": f"Si è verificato un errore nel motore: {e}", "azioni": []}
+    ultimo_errore = None
 
-    nuovi_messaggi = result["messages"]
+    while True:
+        try:
+            start_time = time.time()
+            result = app.invoke(current_state, recursion_limit=15)
+            end_time = time.time()
+            tempo_trascorso = end_time - start_time
 
-    risposta_assistente = ""
-    for msg in reversed(nuovi_messaggi):
-        if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
-            risposta_assistente = msg.content
+            if ultimo_errore is None:
+                print(f"[DEBUG TEMPO] Tempo di risposta: {tempo_trascorso:.2f} secondi")
+            else:
+                print(f"[DEBUG TEMPO] Tempo di risposta dopo switch: {tempo_trascorso:.2f} secondi")
             break
 
-    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
+        except Exception as e:
+            ultimo_errore = e
 
+            if errore_quota_google(e):
+                print(f"[LLM] Quota esaurita sulla chiave corrente: {e}")
+
+                if passa_alla_prossima_api_key():
+                    llm, llm_con_tools, app = costruisci_motore_llm()
+                    print("[LLM] Motore ricostruito con la nuova API key")
+                    continue
+
+                return {
+                    "testo": "Quota Google esaurita su tutte le API key configurate per oggi.",
+                    "azioni": []
+                }
+
+            return {
+                "testo": f"Si è verificato un errore nel motore: {e}",
+                "azioni": []
+            }
 
     nuovi_messaggi = result["messages"]
+    risposta_grezza = ""
+    istruzione_interna_tool = ""
 
-    risposta_assistente = ""
     for msg in reversed(nuovi_messaggi):
         if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip() != "":
-            risposta_assistente = msg.content
-            break
+            testo = msg.content.strip()
+            testo_utente, testo_istruzioni = separa_testo_e_istruzioni(testo)
 
-    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
+            if testo_istruzioni:
+                istruzione_interna_tool = testo_istruzioni
+
+            if testo_utente:
+                risposta_grezza = testo_utente
+                break
 
     tool_usati = []
     for msg in nuovi_messaggi:
-        for msg in nuovi_messaggi:
-            if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                for tool in msg.tool_calls:
-                    if tool['name'] not in tool_usati:
-                        tool_usati.append(tool['name'])
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tool in msg.tool_calls:
+                nome_tool = tool.get("name")
+                if nome_tool and nome_tool not in tool_usati:
+                    tool_usati.append(nome_tool)
 
-    global dati_visivi_temporanei
-    dati_da_esportare = dati_visivi_temporanei
-    dati_visivi_temporanei = None
+    if istruzione_interna_tool:
+        risultato_tool_successivo = esegui_istruzione_interna_tool(istruzione_interna_tool)
+        if risultato_tool_successivo:
+            risposta_grezza = risultato_tool_successivo
+            if "cerca_catalogo_generico" not in tool_usati:
+                tool_usati.append("cerca_catalogo_generico")
+
+    if "calcola_fabbisogno_termico" in tool_usati and "cerca_catalogo_generico" not in tool_usati:
+        risposta_grezza = (risposta_grezza + "\nNon sono ancora riuscito a completare la selezione automatica del modello dal catalogo.").strip()
+
+    prompt_finale = f"""
+    Sei un assistente tecnico HVAC.
+
+    Devi trasformare il risultato di un tool in una risposta finale per l'utente, in italiano naturale.
+
+    REGOLE OBBLIGATORIE:
+    - Non mostrare mai istruzioni interne, ragionamenti, nomi di tool o frasi come "usa il tool", "ISTRUZIONE PER L'AI", "parametro_richiesto", "valore_target".
+    - Non parlare mai come se stessi programmando un workflow.
+    - Non menzionare JSON, campi, variabili, API, file interni o percorsi.
+    - Se il testo contiene un risultato numerico, spiegalo in modo semplice e diretto.
+    - Se il testo contiene un elenco di modelli, presentalo come consiglio tecnico finale, senza dire che non sei riuscito a completare il processo.
+    - Se il testo contiene righe del tipo "- Modello ...", trasformale in elenco puntato leggibile.
+    - Se il testo contiene un elenco di modelli, cita chiaramente i modelli trovati e il parametro confrontato.
+    - Se il testo contiene un errore, trasformalo in un messaggio chiaro per l'utente.
+    - Mantieni solo le informazioni utili all'utente finale.
+    - Non inventare dati non presenti.
+    - Non aggiungere premesse inutili.
+    - Se il risultato è già chiaro, miglioralo soltanto nello stile.
+    - Se sono presenti modelli compatibili o idonei, non chiedere di nuovo dati già forniti dall'utente.
+    - Se il risultato contiene 3 modelli, presentali in elenco puntato.
+
+    Domanda utente:
+    {user_query}
+
+    Risultato tool pulito:
+    {risposta_grezza}
+    """
+
+    try:
+        risposta_assistente = invoca_llm_con_failover([
+            SystemMessage(content="Riscrivi in italiano naturale la risposta tecnica per l'utente finale."),
+            HumanMessage(content=prompt_finale)
+        ]).content.strip()
+    except Exception:
+        risposta_assistente = pulisci_risposta_tool_per_utente(risposta_grezza)
+
+    memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
+
+    dati_da_esportare = None
+
+    for msg in reversed(nuovi_messaggi):
+        if hasattr(msg, "content") and isinstance(msg.content, str):
+            contenuto_msg = msg.content.strip()
+            if contenuto_msg.startswith("SUCCESSO_GRAFICO::"):
+                percorso_file = contenuto_msg.split("SUCCESSO_GRAFICO::", 1)[1].strip()
+                dati_da_esportare = {"tipo": "grafico_html_file", "path": percorso_file}
+                if risposta_assistente == contenuto_msg:
+                    risposta_assistente = "Grafico generato correttamente."
 
     return {
         "testo": risposta_assistente,
@@ -886,60 +1107,75 @@ db_web = carica_database("chroma_db_zoppellaro", "sito_web", embeddings_model)
 db_manuali = carica_database("chroma_db_knowledge_base_pdf", "manuali", embeddings_model)
 
 try:
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    pipeline_dir = os.path.dirname(os.path.dirname(script_dir))
-    excel_path = os.path.join(pipeline_dir, "data", "1-preprocessing", "catalogo.xlsx")
-    # i parametri in read_excel risolvono il problema dei punti usati come migliaia
-    df_catalogo = pd.read_excel(excel_path, thousands='.', decimal=',')
+    if not os.path.exists(CATALOGO_PATH):
+        print(f"Errore caricamento catalogo da '{CATALOGO_PATH}': file non trovato")
+        df_catalogo = None
+        colonne_catalogo = []
+    else:
+        if CATALOGO_PATH.lower().endswith(".xlsx"):
+            df_catalogo = pd.read_excel(CATALOGO_PATH)
+        else:
+            try:
+                df_catalogo = pd.read_csv(
+                    CATALOGO_PATH,
+                    sep=None,
+                    engine="python",
+                    encoding="utf-8"
+                )
+            except UnicodeDecodeError:
+                df_catalogo = pd.read_csv(
+                    CATALOGO_PATH,
+                    sep=None,
+                    engine="python",
+                    encoding="latin-1"
+                )
 
-    # pulisce le colonne per nascondere quelle inutili con le unita di misura
-    colonne_catalogo = []
-    for col in df_catalogo.columns:
-        colonna_stringa = str(col).strip().lower()
-        if not colonna_stringa.endswith("unit"):
-            colonne_catalogo.append(col)
-            
-except Exception:
+        df_catalogo.columns = (
+            df_catalogo.columns
+            .astype(str)
+            .str.replace(r"\s+", " ", regex=True)
+            .str.strip()
+        )
+
+        colonne_catalogo = []
+        for col in df_catalogo.columns:
+            colonna_stringa = str(col).strip().lower()
+            if not colonna_stringa.endswith("unit"):
+                colonne_catalogo.append(col)
+
+        print(f"[CATALOGO] File caricato: {CATALOGO_PATH}")
+        print(f"[CATALOGO] Righe: {len(df_catalogo)} | Colonne: {len(colonne_catalogo)}")
+
+except Exception as e:
+    print(f"Errore caricamento catalogo da '{CATALOGO_PATH}': {e}")
     df_catalogo = None
     colonne_catalogo = []
 
-tools = [#cerca_catalogo_specifico, 
-         #cerca_catalogo_generico, 
-         #cerca_sito_web, cerca_manuali, 
-         #calcola_fabbisogno_termico, 
-         #calcola_portata_aria, 
-         #calcola_consumo_elettrico, 
-         #verifica_prevalenza_canali,
-         #consulta_dizionario_catalogo,
-         #prepara_dati_grafico,
+tools = [cerca_catalogo_specifico, 
+         cerca_catalogo_generico, 
+         cerca_sito_web, #cerca_manuali, 
+         calcola_fabbisogno_termico, 
+         calcola_portata_aria, 
+         calcola_consumo_elettrico, 
+         verifica_prevalenza_canali,
+         consulta_dizionario_catalogo,
          estrai_dati_dinamici,
          genera_grafico_avanzato]
 
 # configurazione LangGraph e LLM
-# parametri aggiunti per limitare i consumi della cpu e della ram
-llm = ChatOllama(model="gemma3:4b", temperature=0, num_thread=4, num_ctx=1536)
-llm_con_tools = llm.bind_tools(tools)
+def costruisci_motore_llm():
+    llm_locale = crea_llm_con_chiave(ottieni_api_key_corrente())
+    llm_con_tools_locale = llm_locale.bind_tools(tools)
+    tool_node_locale = ToolNode(tools)
 
-tool_node = ToolNode(tools)
+    workflow_locale = StateGraph(AgentState)
+    workflow_locale.add_node("agent", call_model)
+    workflow_locale.add_node("tools", tool_node_locale)
+    workflow_locale.set_entry_point("agent")
+    workflow_locale.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
+    workflow_locale.add_conditional_edges("tools", route_after_tool, {"agent": "agent", "end": END})
 
-workflow = StateGraph(AgentState)
-workflow.add_node("agent", call_model)
-workflow.add_node("tools", tool_node)
+    app_locale = workflow_locale.compile()
+    return llm_locale, llm_con_tools_locale, app_locale
 
-def route_after_tool(state: AgentState) -> str:
-    global dati_visivi_temporanei
-    if dati_visivi_temporanei is not None:
-        return "end"
-    return "agent"
-
-def route_after_tool(state: AgentState) -> str:
-    global dati_visivi_temporanei
-    if dati_visivi_temporanei is not None:
-        return "end"
-    return "agent"
-
-workflow.set_entry_point("agent")
-workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
-workflow.add_conditional_edges("tools", route_after_tool, {"agent": "agent", "end": END})
-
-app = workflow.compile()
+llm, llm_con_tools, app = costruisci_motore_llm()

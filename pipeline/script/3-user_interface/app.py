@@ -8,7 +8,6 @@ from PIL import Image
 import plotly.express as px
 import streamlit as st
 import streamlit.components.v1 as components
-import streamlit.components.v1 as components
 
 # --- Importazione di brain ---
 cartella_corrente = os.path.dirname(os.path.abspath(__file__))
@@ -235,7 +234,6 @@ for msg in cronologia_corrente:
             st.caption(f" Azioni compiute: {', '.join(msg['azioni'])}")
         
         if msg.get("dati_visivi"):
-        if msg.get("dati_visivi"):
             dati = msg["dati_visivi"]
             
             # 1. Nuovi grafici salvati su file HTML
@@ -326,7 +324,10 @@ if user_query:
                 response = elabora_richiesta(user_query, chat_id=id_chat_corrente)
                 
                 st.write(response["testo"])
-                if response.get("dati_visivi"):
+                if "SUCCESSO: Dati estratti e salvati" in response["testo"]:
+                    st.success("CSV creato correttamente.")
+                if "SUCCESSO: Grafico generato correttamente." in response["testo"]:
+                    st.success("Grafico creato correttamente.")
                 if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
                     
