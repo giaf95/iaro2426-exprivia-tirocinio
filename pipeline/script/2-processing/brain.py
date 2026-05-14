@@ -6,6 +6,7 @@ import pandas as pd
 import difflib
 import re
 import time
+import json
 from typing import Annotated, List, TypedDict
 import operator
 from langgraph.graph import StateGraph, END
@@ -864,12 +865,19 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
         fig_obj = scatola_sicura["fig"]
 
         try:
-            if fig_obj.data and hasattr(fig_obj.data[0], "y"):
-                valori_y = [v for v in fig_obj.data[0]["y"] if v is not None]
-                if valori_y:
-                    y_max = max(valori_y)
-                    if y_max > 0:
-                        fig_obj.update_yaxes(range=[0, y_max * 1.1])
+            valori_y = []
+            for trace in fig_obj.data:
+                if hasattr(trace, "y"):
+                    for v in trace["y"]:
+                        try:
+                            if v is not None:
+                                valori_y.append(float(v))
+                        except (TypeError, ValueError):
+                            continue
+            if valori_y:
+                y_max = max(valori_y)
+                if y_max > 0:
+                    fig_obj.update_yaxes(range=[0, y_max * 1.1])
         except Exception:
             pass
 
@@ -888,6 +896,37 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
             return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. Riprova dopo il reset giornaliero oppure cambia modello/API key."
 
         return f"ERRORE: {e}"
+    
+@tool
+def mostra_tabella_dati(richiesta_utente: str) -> str:
+    print(f"\n[TOOL] Esecuzione MOSTRA_TABELLA_DATI -> Richiesta: '{richiesta_utente}'")
+    csv_path = CSV_GRAFICI_PATH
+
+    if not os.path.exists(csv_path):
+        return "ERRORE: File dataframe_grafico.csv non trovato. Prima devi estrarre i dati."
+
+    try:
+        df_temp = pd.read_csv(csv_path)
+    except UnicodeDecodeError:
+        df_temp = pd.read_csv(csv_path, encoding="latin-1")
+
+    if df_temp.empty:
+        return "ERRORE: Il file CSV esiste ma non contiene righe utili."
+
+    df_temp.columns = (
+        df_temp.columns
+        .astype(str)
+        .str.replace(r"\s+", " ", regex=True)
+        .str.strip()
+    )
+
+    df_da_mostrare = df_temp.copy()
+
+    if "Modello Prodotto" in df_da_mostrare.columns and "Pressione Spinta Massima" in df_da_mostrare.columns:
+        df_da_mostrare = df_da_mostrare[["Modello Prodotto", "Pressione Spinta Massima"]]
+
+    contenuto_json = df_da_mostrare.to_json(orient="records", force_ascii=False)
+    return f"SUCCESSO_TABELLA::{contenuto_json}"
     
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
@@ -988,7 +1027,7 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Usa ESCLUSIVAMENTE il tool 'cerca_manuali'.
 - Non usare 'cerca_sito_web' per queste domande.
 
-8. IF l'utente chiede un grafico, diagramma o tabella basati direttamente su dati già estratti in CSV:
+8. IF l'utente chiede un grafico o un diagramma basati direttamente su dati già estratti in CSV:
 - Usa il tool 'genera_grafico_avanzato'.
 
 9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati", "salva CSV":
@@ -1007,6 +1046,10 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Interpreta la richiesta come una MODIFICA del grafico corrente.
 - Non usare 'cerca_catalogo_generico' se la richiesta è chiaramente una modifica del grafico.
 - Rigenera il grafico aggiornato partendo dai dati già estratti.
+                                              
+13. IF l'utente chiede una TABELLA dei dati estratti (es. "fammi una tabella", "mostrami in tabella tutti i modelli estratti"):
+- Usa il tool 'mostra_tabella_dati' e NON il tool 'genera_grafico_avanzato'.
+- La tabella deve usare i dati già presenti nel file CSV creato da 'estrai_dati_dinamici'.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
@@ -1041,6 +1084,31 @@ REGOLE GLOBALI:
     stato_grafico_chat = stato_grafici.get(chat_id)
     followup_grafico = False
 
+    # Gestione diretta della TABELLA sui dati estratti
+    if "tabella" in user_query.lower():
+        esito_tabella = mostra_tabella_dati.invoke({"richiesta_utente": user_query})
+
+        if esito_tabella.startswith("SUCCESSO_TABELLA::"):
+            payload = esito_tabella.split("SUCCESSO_TABELLA::", 1)[1].strip()
+            try:
+                righe = json.loads(payload)
+                return {
+                    "testo": "Ecco la tabella con i dati estratti.",
+                    "azioni": ["mostra_tabella_dati"],
+                    "dati_visivi": {"tipo": "tabella", "dati": righe}
+                }
+            except Exception:
+                return {
+                    "testo": pulisci_risposta_tool_per_utente(esito_tabella),
+                    "azioni": ["mostra_tabella_dati"]
+                }
+        else:
+            return {
+                "testo": pulisci_risposta_tool_per_utente(esito_tabella),
+                "azioni": ["mostra_tabella_dati"]
+            }
+
+    # Gestione follow-up sul GRAFICO già presente
     if stato_grafico_chat and stato_grafico_chat.get("grafico_presente"):
         followup_grafico = aggiorna_stato_grafico_da_followup(user_query, stato_grafico_chat)
 
@@ -1058,7 +1126,7 @@ REGOLE GLOBALI:
 
         if stato_grafico_chat.get("ordinamento"):
             parti_richiesta.append(f"ordinato in modo {stato_grafico_chat['ordinamento']}")
-
+        
         if stato_grafico_chat.get("top_n"):
             parti_richiesta.append(f"mostrando solo i primi {stato_grafico_chat['top_n']} valori")
 
@@ -1067,7 +1135,7 @@ REGOLE GLOBALI:
         esito_grafico = genera_grafico_avanzato.invoke({"richiesta_utente": richiesta_grafico})
 
         if esito_grafico.startswith("SUCCESSO_GRAFICO::"):
-            path_grafico = esito_grafico.split("::", 1)[1].strip()
+            path_grafico = esito_grafico.split("SUCCESSO_GRAFICO::", 1)[1].strip()
             return {
                 "testo": "Ho aggiornato il grafico in base alla tua richiesta.",
                 "azioni": ["genera_grafico_avanzato"],
@@ -1212,11 +1280,20 @@ REGOLE GLOBALI:
                 dati_da_esportare = {"tipo": "grafico_html_file", "path": percorso_file}
                 if risposta_assistente == contenuto_msg:
                     risposta_assistente = "Grafico generato correttamente."
-    stato_grafici[chat_id]["grafico_presente"] = True
-    stato_grafici[chat_id]["tipo"] = "bar"
-    stato_grafici[chat_id]["x"] = "Modello Prodotto"
-    stato_grafici[chat_id]["y"] = "Pressione Spinta Massima"
-    stato_grafici[chat_id]["csv_path"] = CSV_GRAFICI_PATH
+                stato_grafici[chat_id]["grafico_presente"] = True
+                stato_grafici[chat_id]["tipo"] = "bar"
+                stato_grafici[chat_id]["x"] = "Modello Prodotto"
+                stato_grafici[chat_id]["y"] = "Pressione Spinta Massima"
+                stato_grafici[chat_id]["csv_path"] = CSV_GRAFICI_PATH
+            elif contenuto_msg.startswith("SUCCESSO_TABELLA::"):
+                payload = contenuto_msg.split("SUCCESSO_TABELLA::", 1)[1].strip()
+                try:
+                    righe = json.loads(payload)
+                    dati_da_esportare = {"tipo": "tabella", "dati": righe}
+                    if risposta_assistente == contenuto_msg:
+                        risposta_assistente = "Tabella generata correttamente."
+                except Exception:
+                    pass
 
     return {
         "testo": risposta_assistente,
@@ -1288,7 +1365,8 @@ tools = [cerca_catalogo_specifico,
          verifica_prevalenza_canali,
          consulta_dizionario_catalogo,
          estrai_dati_dinamici,
-         genera_grafico_avanzato]
+         genera_grafico_avanzato,
+         mostra_tabella_dati]
 
 # configurazione LangGraph e LLM
 def costruisci_motore_llm():
