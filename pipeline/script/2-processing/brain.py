@@ -905,6 +905,40 @@ def route_after_tool(state: AgentState) -> str:
 #4 FUNZIONI DI INTERFACCIA (APP)
 
 memoria_conversazioni = {}
+stato_grafici = {}
+
+def aggiorna_stato_grafico_da_followup(user_query: str, stato: dict) -> bool:
+    testo = user_query.lower().strip()
+    modificato = False
+
+    if "grafico" in testo or "barre" in testo:
+        stato["tipo"] = "bar"
+        modificato = True
+
+    if "ordina" in testo and ("alto" in testo or "decresc" in testo):
+        stato["ordinamento"] = "decrescente"
+        modificato = True
+    elif "ordina" in testo and ("basso" in testo or "cresc" in testo):
+        stato["ordinamento"] = "crescente"
+        modificato = True
+
+    match_top = re.search(r"(primi|solo i primi)\s+(\d+)", testo)
+    if match_top:
+        stato["top_n"] = int(match_top.group(2))
+        modificato = True
+
+    if "pressione spinta massima" in testo:
+        stato["y"] = "Pressione Spinta Massima"
+        modificato = True
+
+    if "modello" in testo or "modelli" in testo:
+        stato["x"] = "Modello Prodotto"
+        modificato = True
+
+    if modificato:
+        stato["grafico_presente"] = True
+
+    return modificato
 
 def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
     global memorie_conversazioni, llm, llm_con_tools, app
@@ -957,6 +991,11 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Usa questo tool SOLO se esistono già dati estratti nel CSV.
 - Non descrivere il grafico a parole se puoi generarlo davvero.
 
+12. IF esiste già un grafico creato nella chat corrente e l'utente fa un follow-up come "ordina", "mostrami solo i primi 5", "cambia asse", "rifallo a barre", "fallo orizzontale":
+- Interpreta la richiesta come una MODIFICA del grafico corrente.
+- Non usare 'cerca_catalogo_generico' se la richiesta è chiaramente una modifica del grafico.
+- Rigenera il grafico aggiornato partendo dai dati già estratti.
+
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
 - NON inventare parametri. Se non li sai, chiedili.
@@ -968,11 +1007,68 @@ REGOLE GLOBALI:
 - REGOLA DI PRIVACY: Non menzionare mai nomi di cartelle, percorsi di file o dettagli del sistema operativo nelle tue risposte.
 - REGOLA 'ISTRUZIONE PER L'AI': quando ricevi una risposta da un tool che contiene la stringa "ISTRUZIONE PER L'AI", non mostrare quella parte all'utente; usala solo come guida interna per decidere il prossimo tool da chiamare.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
+    
+    if chat_id not in stato_grafici:
+        stato_grafici[chat_id] = {
+            "csv_path": CSV_GRAFICI_PATH,
+            "tipo": None,
+            "x": None,
+            "y": None,
+            "filtro_testuale": None,
+            "ordinamento": None,
+            "top_n": None,
+            "titolo": None,
+            "grafico_presente": False
+        }
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
 
     match_modello_specifico = re.search(r"\b\d{3}-\d{3}\b", user_query)
     richiesta_visiva = any(parola in user_query.lower() for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
+
+    stato_grafico_chat = stato_grafici.get(chat_id)
+    followup_grafico = False
+
+    if stato_grafico_chat and stato_grafico_chat.get("grafico_presente"):
+        followup_grafico = aggiorna_stato_grafico_da_followup(user_query, stato_grafico_chat)
+
+    if followup_grafico:
+        parti_richiesta = []
+
+        if stato_grafico_chat.get("tipo") == "bar":
+            parti_richiesta.append("Crea un grafico a barre")
+
+        if stato_grafico_chat.get("x"):
+            parti_richiesta.append(f"con asse X '{stato_grafico_chat['x']}'")
+
+        if stato_grafico_chat.get("y"):
+            parti_richiesta.append(f"e asse Y '{stato_grafico_chat['y']}'")
+
+        if stato_grafico_chat.get("ordinamento"):
+            parti_richiesta.append(f"ordinato in modo {stato_grafico_chat['ordinamento']}")
+
+        if stato_grafico_chat.get("top_n"):
+            parti_richiesta.append(f"mostrando solo i primi {stato_grafico_chat['top_n']} valori")
+
+        richiesta_grafico = " ".join(parti_richiesta).strip()
+
+        esito_grafico = genera_grafico_avanzato.invoke({"richiesta_utente": richiesta_grafico})
+
+        if esito_grafico.startswith("SUCCESSO_GRAFICO::"):
+            path_grafico = esito_grafico.split("::", 1)[1].strip()
+            return {
+                "testo": "Ho aggiornato il grafico in base alla tua richiesta.",
+                "azioni": ["genera_grafico_avanzato"],
+                "dati_visivi": {
+                    "tipo": "grafico_html_file",
+                    "path": path_grafico
+                }
+            }
+
+        return {
+            "testo": pulisci_risposta_tool_per_utente(esito_grafico),
+            "azioni": ["genera_grafico_avanzato"]
+        }
 
     messaggi_completi = memoria_conversazioni[chat_id]
     messaggi_per_llm = [messaggi_completi[0]]
@@ -1104,6 +1200,11 @@ REGOLE GLOBALI:
                 dati_da_esportare = {"tipo": "grafico_html_file", "path": percorso_file}
                 if risposta_assistente == contenuto_msg:
                     risposta_assistente = "Grafico generato correttamente."
+    stato_grafici[chat_id]["grafico_presente"] = True
+    stato_grafici[chat_id]["tipo"] = "bar"
+    stato_grafici[chat_id]["x"] = "Modello Prodotto"
+    stato_grafici[chat_id]["y"] = "Pressione Spinta Massima"
+    stato_grafici[chat_id]["csv_path"] = CSV_GRAFICI_PATH
 
     return {
         "testo": risposta_assistente,
