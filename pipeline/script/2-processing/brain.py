@@ -899,6 +899,7 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
     
 @tool
 def mostra_tabella_dati(richiesta_utente: str) -> str:
+    """Usa questo tool per mostrare in tabella i dati estratti dal CSV generato da estrai_dati_dinamici."""
     print(f"\n[TOOL] Esecuzione MOSTRA_TABELLA_DATI -> Richiesta: '{richiesta_utente}'")
     csv_path = CSV_GRAFICI_PATH
 
