@@ -861,11 +861,23 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
         if "fig" not in scatola_sicura:
             return "ERRORE: Il modello non ha creato la variabile 'fig'."
 
+        fig_obj = scatola_sicura["fig"]
+
+        try:
+            if fig_obj.data and hasattr(fig_obj.data[0], "y"):
+                valori_y = [v for v in fig_obj.data[0]["y"] if v is not None]
+                if valori_y:
+                    y_max = max(valori_y)
+                    if y_max > 0:
+                        fig_obj.update_yaxes(range=[0, y_max * 1.1])
+        except Exception:
+            pass
+
         os.makedirs(DIR_GRAFICI_SALVATI, exist_ok=True)
         nome_file = f"grafico_{int(time.time())}.html"
         html_path = os.path.join(DIR_GRAFICI_SALVATI, nome_file)
 
-        scatola_sicura["fig"].write_html(html_path, full_html=False, include_plotlyjs="cdn")
+        fig_obj.write_html(html_path, full_html=False, include_plotlyjs="cdn")
 
         return f"SUCCESSO_GRAFICO::{html_path}"
 
