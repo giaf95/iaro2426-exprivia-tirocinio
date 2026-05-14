@@ -926,6 +926,35 @@ def mostra_tabella_dati(richiesta_utente: str) -> str:
     if "Modello Prodotto" in df_da_mostrare.columns and "Pressione Spinta Massima" in df_da_mostrare.columns:
         df_da_mostrare = df_da_mostrare[["Modello Prodotto", "Pressione Spinta Massima"]]
 
+    testo = richiesta_utente.lower()
+
+    ordinamento = None
+    if "ordina" in testo and ("cresc" in testo or "dal più basso" in testo or "dal piu basso" in testo):
+        ordinamento = "crescente"
+    elif "ordina" in testo and ("decresc" in testo or "dal più alto" in testo or "dal piu alto" in testo):
+        ordinamento = "decrescente"
+
+    match_top = re.search(r"(primi|prime|solo i primi|solo le prime)\s+(\d+)", testo)
+    top_n = int(match_top.group(2)) if match_top else None
+
+    colonna_numerica = None
+    for col in df_da_mostrare.columns:
+        serie_num = pd.to_numeric(df_da_mostrare[col], errors="coerce")
+        if serie_num.notna().sum() > 0:
+            colonna_numerica = col
+            break
+
+    if ordinamento and colonna_numerica:
+        ascending = True if ordinamento == "crescente" else False
+        df_da_mostrare = df_da_mostrare.sort_values(
+            by=colonna_numerica,
+            key=lambda s: pd.to_numeric(s, errors="coerce"),
+            ascending=ascending
+        )
+
+    if top_n is not None and top_n > 0:
+        df_da_mostrare = df_da_mostrare.head(top_n)
+
     contenuto_json = df_da_mostrare.to_json(orient="records", force_ascii=False)
     return f"SUCCESSO_TABELLA::{contenuto_json}"
     
@@ -1079,16 +1108,18 @@ REGOLE GLOBALI:
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
 
+    testo_lower = user_query.lower()
     match_modello_specifico = re.search(r"\b\d{3}-\d{3}\b", user_query)
-    richiesta_visiva = any(parola in user_query.lower() for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
+    richiesta_visiva = any(parola in testo_lower for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
 
     stato_grafico_chat = stato_grafici.get(chat_id)
     followup_grafico = False
 
-    # Gestione diretta della TABELLA sui dati estratti
-    if "tabella" in user_query.lower():
-        esito_tabella = mostra_tabella_dati.invoke({"richiesta_utente": user_query})
+    match_top_tabella = re.search(r"(primi|prime|solo i primi|solo le prime)\s+(\\d+)", testo_lower)
 
+    # Gestione diretta della TABELLA sui dati estratti
+    if "tabella" in testo_lower or (match_top_tabella and "grafico" not in testo_lower and "diagramma" not in testo_lower):
+        esito_tabella = mostra_tabella_dati.invoke({"richiesta_utente\": user_query})
         if esito_tabella.startswith("SUCCESSO_TABELLA::"):
             payload = esito_tabella.split("SUCCESSO_TABELLA::", 1)[1].strip()
             try:
@@ -1261,13 +1292,16 @@ REGOLE GLOBALI:
     {risposta_grezza}
     """
 
-    try:
-        risposta_assistente = invoca_llm_con_failover([
-            SystemMessage(content="Riscrivi in italiano naturale la risposta tecnica per l'utente finale."),
-            HumanMessage(content=prompt_finale)
-        ]).content.strip()
-    except Exception:
+    if any(t in ["estrai_dati_dinamici", "genera_grafico_avanzato", "mostra_tabella_dati"] for t in tool_usati):
         risposta_assistente = pulisci_risposta_tool_per_utente(risposta_grezza)
+    else:
+        try:
+            risposta_assistente = invoca_llm_con_failover([
+                SystemMessage(content="Riscrivi in italiano naturale la risposta tecnica per l'utente finale."),
+                HumanMessage(content=prompt_finale)
+            ]).content.strip()
+        except Exception:
+            risposta_assistente = pulisci_risposta_tool_per_utente(risposta_grezza)
 
     memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
 

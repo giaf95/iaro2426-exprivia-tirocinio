@@ -36,10 +36,10 @@ for cartella in ispezzione_file:
 def scelta(percorso_scelto):
     if percorso_scelto.endswith('.xlsx'):
         excel = pd.read_excel(percorso_scelto)
-        st.dataframe(excel, use_container_width=True)
+        st.dataframe(excel, width="stretch")
     elif percorso_scelto.endswith('.csv'):
         csv = pd.read_csv(percorso_scelto, sep=';')
-        st.dataframe(csv, use_container_width=True)
+        st.dataframe(csv, width="stretch")
     elif percorso_scelto.endswith('.pdf'):
         documento = fitz.open(percorso_scelto)
         for numero_pagina in range(len(documento)):
@@ -253,7 +253,7 @@ for msg in cronologia_corrente:
             elif dati.get("tipo") == "tabella":
                 try:
                     df_visivo = pd.DataFrame(dati["dati"])
-                    st.dataframe(df_visivo, use_container_width=True, hide_index=True)
+                    st.dataframe(df_visivo, width="stretch", hide_index=True)
                 except Exception as e:
                     st.error(f"Errore nel rendering della tabella: {e}")
 
@@ -355,7 +355,7 @@ if user_query:
                     elif dati.get("tipo") == "tabella":
                         try:
                             df_visivo = pd.DataFrame(dati["dati"])
-                            st.dataframe(df_visivo, use_container_width=True, hide_index=True)
+                            st.dataframe(df_visivo, width="stretch", hide_index=True)
                         except Exception as e:
                             st.error(f"Errore nel rendering della tabella: {e}")
 
