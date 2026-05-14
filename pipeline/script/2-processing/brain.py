@@ -1118,8 +1118,10 @@ REGOLE GLOBALI:
     match_top_tabella = re.search(r"(primi|prime|solo i primi|solo le prime)\s+(\\d+)", testo_lower)
 
     # Gestione diretta della TABELLA sui dati estratti
+# Gestione diretta della TABELLA sui dati estratti
     if "tabella" in testo_lower or (match_top_tabella and "grafico" not in testo_lower and "diagramma" not in testo_lower):
-        esito_tabella = mostra_tabella_dati.invoke({"richiesta_utente\": user_query})
+        esito_tabella = mostra_tabella_dati.invoke({"richiesta_utente": user_query})
+
         if esito_tabella.startswith("SUCCESSO_TABELLA::"):
             payload = esito_tabella.split("SUCCESSO_TABELLA::", 1)[1].strip()
             try:
