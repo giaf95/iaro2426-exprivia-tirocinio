@@ -6,6 +6,7 @@ import pandas as pd
 import difflib
 import re
 import time
+import json
 from typing import Annotated, List, TypedDict
 import operator
 from langgraph.graph import StateGraph, END
@@ -21,7 +22,7 @@ import plotly.express as px
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 _cartella_script = os.path.dirname(_script_dir)
 sys.path.insert(0, _cartella_script)
-from config import CATALOGO_PATH, GOOGLE_API_KEYS, CSV_GRAFICI_PATH, DIR_GRAFICI_SALVATI
+from prototype.davide.config import CATALOGO_PATH, GOOGLE_API_KEYS, CSV_GRAFICI_PATH, DIR_GRAFICI_SALVATI
 
 class AgentState(TypedDict):
     messages: Annotated[List, operator.add]
@@ -697,7 +698,7 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         Lista esatta delle colonne del dataframe df:
         {colonne_reali}
 
-        COMPILA QUESTO TEMPLATE ESATTO sostituendo solo NOMECOLONNA, SEGNO e NUMERO:
+        COMPILA ESATTAMENTE QUESTE DUE RIGHE, senza aggiungerne altre:
 
         ```python
         colonna_numerica = converti_serie_numerica(df["NOMECOLONNA"])
@@ -708,10 +709,13 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         1. NOMECOLONNA deve essere una delle colonne presenti nella lista.
         2. SEGNO deve essere uno tra >, >=, <, <=, ==.
         3. NUMERO deve essere preso dalla richiesta utente.
-        4. Non aggiungere spiegazioni.
-        5. Non usare str.replace(".", "") o conversioni numeriche personalizzate.
-        6. Usa obbligatoriamente converti_serie_numerica.
-        7. Restituisci solo codice Python valido, preferibilmente dentro un blocco ```python.
+        4. La variabile finale deve chiamarsi obbligatoriamente dfrisultato.
+        5. Non aggiungere spiegazioni.
+        6. Non aggiungere print.
+        7. Non usare altre variabili finali.
+        8. Non usare str.replace(".", "") o conversioni numeriche personalizzate.
+        9. Usa obbligatoriamente converti_serie_numerica.
+        10. Restituisci solo codice Python valido, preferibilmente dentro un blocco ```python.
         """
         
         risposta_llm = invoca_llm_con_failover(prompt)
@@ -732,20 +736,32 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
             "pd": pd,
             "df": df_lavoro,
             "converti_serie_numerica": converti_serie_numerica,
-            "dfRisultato": None,
             "dfrisultato": None
         }
+
+        print(f"[DEBUG TOOL] Colonne disponibili: {colonne_reali}")
         exec(codice_pulito, {}, scatola_sicura)
+        
+        if "colonna_numerica" in scatola_sicura:
+            colonna_debug = scatola_sicura["colonna_numerica"]
+            if hasattr(colonna_debug, "notna"):
+                print(f"[DEBUG TOOL] Valori numerici validi nella colonna: {int(colonna_debug.notna().sum())}")
 
-        df_finale = scatola_sicura.get("df_risultato")
+        df_finale = scatola_sicura.get("dfrisultato")
+
         if df_finale is None:
-            df_finale = scatola_sicura.get("dfrisultato")
+            return "ERRORE: il codice generato non ha creato la variabile 'dfrisultato'."
 
-        if df_finale is not None and isinstance(df_finale, pd.DataFrame):
-            df_finale.to_csv(path_salvataggio, index=False)
-            return "SUCCESSO: Dati estratti e salvati in data/3-user_interface/dataframe_grafico.csv"
+        if not isinstance(df_finale, pd.DataFrame):
+            return "ERRORE: 'dfrisultato' non è un DataFrame Pandas valido."
 
-        return "ERRORE: Generazione dataframe fallita."
+        print(f"[DEBUG TOOL] Righe trovate: {len(df_finale)}")
+
+        if df_finale.empty:
+            return "Nessun modello trovato con i filtri richiesti."
+
+        df_finale.to_csv(path_salvataggio, index=False)
+        return f"SUCCESSO: Dati estratti e salvati in data/3-user_interface/dataframe_grafico.csv. Righe trovate: {len(df_finale)}"
         
     except PermissionError:
         return "ERRORE CRITICO: Chiudi il file CSV se aperto in Excel e riprova."
@@ -846,11 +862,30 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
         if "fig" not in scatola_sicura:
             return "ERRORE: Il modello non ha creato la variabile 'fig'."
 
+        fig_obj = scatola_sicura["fig"]
+
+        try:
+            valori_y = []
+            for trace in fig_obj.data:
+                if hasattr(trace, "y"):
+                    for v in trace["y"]:
+                        try:
+                            if v is not None:
+                                valori_y.append(float(v))
+                        except (TypeError, ValueError):
+                            continue
+            if valori_y:
+                y_max = max(valori_y)
+                if y_max > 0:
+                    fig_obj.update_yaxes(range=[0, y_max * 1.1])
+        except Exception:
+            pass
+
         os.makedirs(DIR_GRAFICI_SALVATI, exist_ok=True)
         nome_file = f"grafico_{int(time.time())}.html"
         html_path = os.path.join(DIR_GRAFICI_SALVATI, nome_file)
 
-        scatola_sicura["fig"].write_html(html_path, full_html=False, include_plotlyjs="cdn")
+        fig_obj.write_html(html_path, full_html=False, include_plotlyjs="cdn")
 
         return f"SUCCESSO_GRAFICO::{html_path}"
 
@@ -861,6 +896,67 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
             return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. Riprova dopo il reset giornaliero oppure cambia modello/API key."
 
         return f"ERRORE: {e}"
+    
+@tool
+def mostra_tabella_dati(richiesta_utente: str) -> str:
+    """Usa questo tool per mostrare in tabella i dati estratti dal CSV generato da estrai_dati_dinamici."""
+    print(f"\n[TOOL] Esecuzione MOSTRA_TABELLA_DATI -> Richiesta: '{richiesta_utente}'")
+    csv_path = CSV_GRAFICI_PATH
+
+    if not os.path.exists(csv_path):
+        return "ERRORE: File dataframe_grafico.csv non trovato. Prima devi estrarre i dati."
+
+    try:
+        df_temp = pd.read_csv(csv_path)
+    except UnicodeDecodeError:
+        df_temp = pd.read_csv(csv_path, encoding="latin-1")
+
+    if df_temp.empty:
+        return "ERRORE: Il file CSV esiste ma non contiene righe utili."
+
+    df_temp.columns = (
+        df_temp.columns
+        .astype(str)
+        .str.replace(r"\s+", " ", regex=True)
+        .str.strip()
+    )
+
+    df_da_mostrare = df_temp.copy()
+
+    if "Modello Prodotto" in df_da_mostrare.columns and "Pressione Spinta Massima" in df_da_mostrare.columns:
+        df_da_mostrare = df_da_mostrare[["Modello Prodotto", "Pressione Spinta Massima"]]
+
+    testo = richiesta_utente.lower()
+
+    ordinamento = None
+    if "ordina" in testo and ("cresc" in testo or "dal più basso" in testo or "dal piu basso" in testo):
+        ordinamento = "crescente"
+    elif "ordina" in testo and ("decresc" in testo or "dal più alto" in testo or "dal piu alto" in testo):
+        ordinamento = "decrescente"
+
+    match_top = re.search(r"(primi|prime|solo i primi|solo le prime)\s+(\d+)", testo)
+    top_n = int(match_top.group(2)) if match_top else None
+
+    colonna_numerica = None
+    for col in df_da_mostrare.columns:
+        serie_num = pd.to_numeric(df_da_mostrare[col], errors="coerce")
+        if serie_num.notna().sum() > 0:
+            colonna_numerica = col
+            break
+
+    if ordinamento and colonna_numerica:
+        ascending = True if ordinamento == "crescente" else False
+        df_da_mostrare = df_da_mostrare.sort_values(
+            by=colonna_numerica,
+            key=lambda s: pd.to_numeric(s, errors="coerce"),
+            ascending=ascending
+        )
+
+    if top_n is not None and top_n > 0:
+        df_da_mostrare = df_da_mostrare.head(top_n)
+
+    contenuto_json = df_da_mostrare.to_json(orient="records", force_ascii=False)
+    return f"SUCCESSO_TABELLA::{contenuto_json}"
     
 #3 FUNZIONI DI LANGGRAPH E LOGICA AI
 
@@ -890,6 +986,40 @@ def route_after_tool(state: AgentState) -> str:
 #4 FUNZIONI DI INTERFACCIA (APP)
 
 memoria_conversazioni = {}
+stato_grafici = {}
+
+def aggiorna_stato_grafico_da_followup(user_query: str, stato: dict) -> bool:
+    testo = user_query.lower().strip()
+    modificato = False
+
+    if "grafico" in testo or "barre" in testo:
+        stato["tipo"] = "bar"
+        modificato = True
+
+    if "ordina" in testo and ("alto" in testo or "decresc" in testo):
+        stato["ordinamento"] = "decrescente"
+        modificato = True
+    elif "ordina" in testo and ("basso" in testo or "cresc" in testo):
+        stato["ordinamento"] = "crescente"
+        modificato = True
+
+    match_top = re.search(r"(primi|solo i primi)\s+(\d+)", testo)
+    if match_top:
+        stato["top_n"] = int(match_top.group(2))
+        modificato = True
+
+    if "pressione spinta massima" in testo:
+        stato["y"] = "Pressione Spinta Massima"
+        modificato = True
+
+    if "modello" in testo or "modelli" in testo:
+        stato["x"] = "Modello Prodotto"
+        modificato = True
+
+    if modificato:
+        stato["grafico_presente"] = True
+
+    return modificato
 
 def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
     global memorie_conversazioni, llm, llm_con_tools, app
@@ -927,7 +1057,7 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Usa ESCLUSIVAMENTE il tool 'cerca_manuali'.
 - Non usare 'cerca_sito_web' per queste domande.
 
-8. IF l'utente chiede un grafico, diagramma o tabella basati direttamente su dati già estratti in CSV:
+8. IF l'utente chiede un grafico o un diagramma basati direttamente su dati già estratti in CSV:
 - Usa il tool 'genera_grafico_avanzato'.
 
 9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati", "salva CSV":
@@ -942,6 +1072,15 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Usa questo tool SOLO se esistono già dati estratti nel CSV.
 - Non descrivere il grafico a parole se puoi generarlo davvero.
 
+12. IF esiste già un grafico creato nella chat corrente e l'utente fa un follow-up come "ordina", "mostrami solo i primi 5", "cambia asse", "rifallo a barre", "fallo orizzontale":
+- Interpreta la richiesta come una MODIFICA del grafico corrente.
+- Non usare 'cerca_catalogo_generico' se la richiesta è chiaramente una modifica del grafico.
+- Rigenera il grafico aggiornato partendo dai dati già estratti.
+                                              
+13. IF l'utente chiede una TABELLA dei dati estratti (es. "fammi una tabella", "mostrami in tabella tutti i modelli estratti"):
+- Usa il tool 'mostra_tabella_dati' e NON il tool 'genera_grafico_avanzato'.
+- La tabella deve usare i dati già presenti nel file CSV creato da 'estrai_dati_dinamici'.
+
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
 - NON inventare parametri. Se non li sai, chiedili.
@@ -953,11 +1092,97 @@ REGOLE GLOBALI:
 - REGOLA DI PRIVACY: Non menzionare mai nomi di cartelle, percorsi di file o dettagli del sistema operativo nelle tue risposte.
 - REGOLA 'ISTRUZIONE PER L'AI': quando ricevi una risposta da un tool che contiene la stringa "ISTRUZIONE PER L'AI", non mostrare quella parte all'utente; usala solo come guida interna per decidere il prossimo tool da chiamare.""")
         memoria_conversazioni[chat_id] = [istruzioni_di_sistema]
+    
+    if chat_id not in stato_grafici:
+        stato_grafici[chat_id] = {
+            "csv_path": CSV_GRAFICI_PATH,
+            "tipo": None,
+            "x": None,
+            "y": None,
+            "filtro_testuale": None,
+            "ordinamento": None,
+            "top_n": None,
+            "titolo": None,
+            "grafico_presente": False
+        }
 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
 
+    testo_lower = user_query.lower()
     match_modello_specifico = re.search(r"\b\d{3}-\d{3}\b", user_query)
-    richiesta_visiva = any(parola in user_query.lower() for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
+    richiesta_visiva = any(parola in testo_lower for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
+
+    stato_grafico_chat = stato_grafici.get(chat_id)
+    followup_grafico = False
+
+    match_top_tabella = re.search(r"(primi|prime|solo i primi|solo le prime)\s+(\\d+)", testo_lower)
+
+    # Gestione diretta della TABELLA sui dati estratti
+# Gestione diretta della TABELLA sui dati estratti
+    if "tabella" in testo_lower or (match_top_tabella and "grafico" not in testo_lower and "diagramma" not in testo_lower):
+        esito_tabella = mostra_tabella_dati.invoke({"richiesta_utente": user_query})
+
+        if esito_tabella.startswith("SUCCESSO_TABELLA::"):
+            payload = esito_tabella.split("SUCCESSO_TABELLA::", 1)[1].strip()
+            try:
+                righe = json.loads(payload)
+                return {
+                    "testo": "Ecco la tabella con i dati estratti.",
+                    "azioni": ["mostra_tabella_dati"],
+                    "dati_visivi": {"tipo": "tabella", "dati": righe}
+                }
+            except Exception:
+                return {
+                    "testo": pulisci_risposta_tool_per_utente(esito_tabella),
+                    "azioni": ["mostra_tabella_dati"]
+                }
+        else:
+            return {
+                "testo": pulisci_risposta_tool_per_utente(esito_tabella),
+                "azioni": ["mostra_tabella_dati"]
+            }
+
+    # Gestione follow-up sul GRAFICO già presente
+    if stato_grafico_chat and stato_grafico_chat.get("grafico_presente"):
+        followup_grafico = aggiorna_stato_grafico_da_followup(user_query, stato_grafico_chat)
+
+    if followup_grafico:
+        parti_richiesta = []
+
+        if stato_grafico_chat.get("tipo") == "bar":
+            parti_richiesta.append("Crea un grafico a barre")
+
+        if stato_grafico_chat.get("x"):
+            parti_richiesta.append(f"con asse X '{stato_grafico_chat['x']}'")
+
+        if stato_grafico_chat.get("y"):
+            parti_richiesta.append(f"e asse Y '{stato_grafico_chat['y']}'")
+
+        if stato_grafico_chat.get("ordinamento"):
+            parti_richiesta.append(f"ordinato in modo {stato_grafico_chat['ordinamento']}")
+        
+        if stato_grafico_chat.get("top_n"):
+            parti_richiesta.append(f"mostrando solo i primi {stato_grafico_chat['top_n']} valori")
+
+        richiesta_grafico = " ".join(parti_richiesta).strip()
+
+        esito_grafico = genera_grafico_avanzato.invoke({"richiesta_utente": richiesta_grafico})
+
+        if esito_grafico.startswith("SUCCESSO_GRAFICO::"):
+            path_grafico = esito_grafico.split("SUCCESSO_GRAFICO::", 1)[1].strip()
+            return {
+                "testo": "Ho aggiornato il grafico in base alla tua richiesta.",
+                "azioni": ["genera_grafico_avanzato"],
+                "dati_visivi": {
+                    "tipo": "grafico_html_file",
+                    "path": path_grafico
+                }
+            }
+
+        return {
+            "testo": pulisci_risposta_tool_per_utente(esito_grafico),
+            "azioni": ["genera_grafico_avanzato"]
+        }
 
     messaggi_completi = memoria_conversazioni[chat_id]
     messaggi_per_llm = [messaggi_completi[0]]
@@ -1069,13 +1294,16 @@ REGOLE GLOBALI:
     {risposta_grezza}
     """
 
-    try:
-        risposta_assistente = invoca_llm_con_failover([
-            SystemMessage(content="Riscrivi in italiano naturale la risposta tecnica per l'utente finale."),
-            HumanMessage(content=prompt_finale)
-        ]).content.strip()
-    except Exception:
+    if any(t in ["estrai_dati_dinamici", "genera_grafico_avanzato", "mostra_tabella_dati"] for t in tool_usati):
         risposta_assistente = pulisci_risposta_tool_per_utente(risposta_grezza)
+    else:
+        try:
+            risposta_assistente = invoca_llm_con_failover([
+                SystemMessage(content="Riscrivi in italiano naturale la risposta tecnica per l'utente finale."),
+                HumanMessage(content=prompt_finale)
+            ]).content.strip()
+        except Exception:
+            risposta_assistente = pulisci_risposta_tool_per_utente(risposta_grezza)
 
     memoria_conversazioni[chat_id].append(AIMessage(content=risposta_assistente))
 
@@ -1089,6 +1317,20 @@ REGOLE GLOBALI:
                 dati_da_esportare = {"tipo": "grafico_html_file", "path": percorso_file}
                 if risposta_assistente == contenuto_msg:
                     risposta_assistente = "Grafico generato correttamente."
+                stato_grafici[chat_id]["grafico_presente"] = True
+                stato_grafici[chat_id]["tipo"] = "bar"
+                stato_grafici[chat_id]["x"] = "Modello Prodotto"
+                stato_grafici[chat_id]["y"] = "Pressione Spinta Massima"
+                stato_grafici[chat_id]["csv_path"] = CSV_GRAFICI_PATH
+            elif contenuto_msg.startswith("SUCCESSO_TABELLA::"):
+                payload = contenuto_msg.split("SUCCESSO_TABELLA::", 1)[1].strip()
+                try:
+                    righe = json.loads(payload)
+                    dati_da_esportare = {"tipo": "tabella", "dati": righe}
+                    if risposta_assistente == contenuto_msg:
+                        risposta_assistente = "Tabella generata correttamente."
+                except Exception:
+                    pass
 
     return {
         "testo": risposta_assistente,
@@ -1160,14 +1402,14 @@ tools = [cerca_catalogo_specifico,
          verifica_prevalenza_canali,
          consulta_dizionario_catalogo,
          estrai_dati_dinamici,
-         genera_grafico_avanzato]
+         genera_grafico_avanzato,
+         mostra_tabella_dati]
 
 # configurazione LangGraph e LLM
 def costruisci_motore_llm():
     llm_locale = crea_llm_con_chiave(ottieni_api_key_corrente())
     llm_con_tools_locale = llm_locale.bind_tools(tools)
     tool_node_locale = ToolNode(tools)
-
     workflow_locale = StateGraph(AgentState)
     workflow_locale.add_node("agent", call_model)
     workflow_locale.add_node("tools", tool_node_locale)

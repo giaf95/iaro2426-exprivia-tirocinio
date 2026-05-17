@@ -4,3 +4,4 @@ pipeline/data/2-processing/chroma_db_catalogo/
 pipeline/data/3-user_interface/database_chat.db
 pipeline/script/2-processing/__pycache__
 pipeline/data/3-user_interface/grafici_salvati
+prototype/davide/log_prompts_dspy.txt

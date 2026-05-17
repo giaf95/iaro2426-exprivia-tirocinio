@@ -14,7 +14,8 @@ cartella_corrente = os.path.dirname(os.path.abspath(__file__))
 cartella_script = os.path.abspath(os.path.join(cartella_corrente, '..'))
 cartella_processing = os.path.join(cartella_script, '2-processing')
 sys.path.append(cartella_processing)
-from brain import elabora_richiesta #type: ignore
+from brain_dspy import elabora_richiesta #type: ignore
+
 
 cartella_pipeline = os.path.abspath(os.path.join(cartella_script, '..'))
 DB_FILE = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'database_chat.db')
@@ -36,10 +37,10 @@ for cartella in ispezzione_file:
 def scelta(percorso_scelto):
     if percorso_scelto.endswith('.xlsx'):
         excel = pd.read_excel(percorso_scelto)
-        st.dataframe(excel, use_container_width=True)
+        st.dataframe(excel, width="stretch")
     elif percorso_scelto.endswith('.csv'):
         csv = pd.read_csv(percorso_scelto, sep=';')
-        st.dataframe(csv, use_container_width=True)
+        st.dataframe(csv, width="stretch")
     elif percorso_scelto.endswith('.pdf'):
         documento = fitz.open(percorso_scelto)
         for numero_pagina in range(len(documento)):
@@ -228,14 +229,14 @@ chat_attiva = dati_utente["chat_attiva"]
 cronologia_corrente = dati_utente["tutte_le_chat"][chat_attiva]
 
 for msg in cronologia_corrente:
-   with st.chat_message(msg["role"]):
+    with st.chat_message(msg["role"]):
         st.write(msg["content"])
         if "azioni" in msg and msg["azioni"]:
             st.caption(f" Azioni compiute: {', '.join(msg['azioni'])}")
-        
+
         if msg.get("dati_visivi"):
             dati = msg["dati_visivi"]
-            
+
             # 1. Nuovi grafici salvati su file HTML
             if dati.get("tipo") == "grafico_html_file":
                 percorso_file = dati.get("path")
@@ -249,7 +250,14 @@ for msg in cronologia_corrente:
                         st.error(f"Errore nel caricamento del file grafico: {e}")
                 else:
                     st.info("Nota: Il file di questo grafico non è più disponibile.")
-                    
+
+            elif dati.get("tipo") == "tabella":
+                try:
+                    df_visivo = pd.DataFrame(dati["dati"])
+                    st.dataframe(df_visivo, width="stretch", hide_index=True)
+                except Exception as e:
+                    st.error(f"Errore nel rendering della tabella: {e}")
+
             # 2. Salvagente per i primissimi test in RAM
             elif dati.get("tipo") == "html_in_memory":
                 codice = dati.get("codice_html")
@@ -330,7 +338,7 @@ if user_query:
                     st.success("Grafico creato correttamente.")
                 if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
-                    
+
                     # Lettura da file HTML
                     if dati.get("tipo") == "grafico_html_file":
                         percorso_file = dati.get("path")
@@ -344,6 +352,22 @@ if user_query:
                                 st.error(f"Errore nel caricamento del file grafico: {e}")
                         else:
                             st.info("Nota: Il file di questo grafico non è più disponibile.")
+
+                    elif dati.get("tipo") == "tabella":
+                        try:
+                            df_visivo = pd.DataFrame(dati["dati"])
+                            st.dataframe(df_visivo, width="stretch", hide_index=True)
+                        except Exception as e:
+                            st.error(f"Errore nel rendering della tabella: {e}")
+
+                    #Salvagente per i vecchi messaggi in cronologia
+                    elif dati.get("tipo") == "html_in_memory":
+                        codice = dati.get("codice_html")
+                        if codice:
+                            import streamlit.components.v1 as components
+                            components.html(codice, height=500, scrolling=True)
+                        else:
+                            st.info("Grafico precedente non disponibile (cronologia obsoleta).")
                     
                     #Salvagente per i vecchi messaggi in cronologia
                     elif dati.get("tipo") == "html_in_memory":

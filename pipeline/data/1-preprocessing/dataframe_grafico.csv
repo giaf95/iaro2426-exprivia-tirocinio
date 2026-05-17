@@ -1,5 +1,49 @@
-Pagina_PDF,Modello Prodotto,Grandezza Telaio,Portata Massima,Unita di misura(m3/h),Pressione Operativa,Unita di misura(Pa),Portata Aria Ripresa Max,Unita di misura(m3/h)2,Pressione Spinta Massima,Unita di misura(Pa)2,Aria esterna massima,Unita di misura(m3/h)3,Valore di temperatura minimo,Efficenza(%),Capacita Massima Aria Esterna,Unita di misura(m3/h)4,Capacita frigorifera aria esterna,Potenza(KW),Capacita di assorbimento aria esterna,Potenza(KW)2,EER compressori,Potenza termica aria esterna,Potenza(KW)3,Potenza assorbita aria esterna,Potenza(KW)4,COP compressori,Potenza aria calda esterna,Potenza(KW)5,Potenza assorbita aria esterna 5,Potenza(KW)6,COP compressori.1,Potenza recuperata minima,Potenza(KW)7,Potenza frigorifera totale macchina6,Potenza(KW)8,EER minimo,Recupero Termico Minimo,Potenza(KW)9,Potenza termica totale macchina7,Potenza(KW)10,COP minimo sistema riferito ai soli compressori7,Recupero Termico,Potenza(KW)11,Potenza termica totale macchina,Potenza (KW)12,COP minimo,Efficienza stagionale in raffreddamento 9,Efficenza (%)2,Efficienza stagionale in riscaldamento 10,Efficenza (%)3,N. compressori / N. circuiti,Modulazione carico,Fluido refrigerante,Valvola espansione,Tipologia ventilatori sezione ventilante esterna,Tipologia ventilatori sezione ventilante mandata,Modulo gas massimo,Potenza termica massima modulo gas,Potenza (KW)13,Efficienza massima sul PCI,Efficenza (%)4,1 Pressione Massima,Unità di misura(Pa)3,1 Pressione Massima Ripresa,Unità di misura(Pa)4,2 Rapporto di temperatura minimo,Efficenza(%)4,3 Potenza frigorifera aria esterna,Potenza(KW)14,3 Potenza assorbita aria esterna,Potenza(KW)15,4 Potenza termica aria esterna,Potenza(KW)16,4 COP compressori,5 Potenza termica aria esterna,Potenza(KW)17,5 Potenza assorbita aria esterna,Potenza(KW)18,5 COP compressori,Recupero Termico Minimo2,Potenza(KW)19,6 Potenza frigorifera totale macchina,Potenza(KW)20,6 EER minimo sistema riferito ai soli compressori,7 Potenza recuperata minima dalla ruota 33% a.e.,Potenza(KW)21,7 Potenza termica totale macchina,Potenza(KW)22,7 COP minimo sistema riferito ai soli compressori,8 Potenza termica totale macchina,Potenza(KW)23,9 Efficienza stagionale in raffreddamento,Efficenza(%)5,10 Efficienza stagionale in riscaldamento,Efficenza(%)6,Potenza massima assorbita,Potenza(KW)24,Corrente massima assorbita,Corrente massima assorbita(A),Spunto massimo M/FCS,Corrente massima assorbita(A)2,Alimentazione
-6,AD-115,D,11.523,m3/h,915.0,Pa,11.294,m3/h,591.0,Pa,11.053,m3/h,75.0,%,11.026,m3/h,"64,9",kW,"14,3",kW,"4,5","56,1",kW,"11,1",kW,"4,8","37,9",kW,"10,4",kW,"4,3","20,8",kW,"82,2",kW,"5,1","11,1",kW,"72,2",kW,"6,2","20,6",kW,"63,3",kW,"6,7","124,3",%,"117,7",%,02-feb,gradini,R410A,Meccanica,Assiali EC,Plug fan EC,G065,"64,81",kW,"111,6",%,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-7,AG-144,E,14.45,m3/h,978.0,Pa,16.506,m3/h,586.0,Pa,16.129,m3/h,75.0,%,12.342,m3/h,"81,2",kW,"17,3",kW,"4,8","76,5",kW,"13,6",kW,"5,2","48,5",kW,"12,8",kW,"4,4","26,2",kW,"107,2",kW,"5,6","13,4",kW,"86,3",kW,"6,9","27,6",kW,"73,1",kW,"6,7","134,9",%,"123,9",%,02-feb,gradini,R410A,Meccanica,Assiali EC,Plug fan EC,G105,"99,35",kW,"118,5",%,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-8,AJ-195,E,19.533,m3/h,995.0,Pa,18.436,m3/h,697.0,Pa,19.787,m3/h,75.0,%,10.161,m3/h,"119,5",kW,"27,2",kW,"4,1","112,4",kW,"21,6",kW,"4,5","84,5",kW,"20,6",kW,"3,4","36,7",kW,"153,8",kW,"5,2","19,2",kW,"135,4",kW,"5,1","35,5",kW,"109,1",kW,"5,7","150,7",%,"152,9",%,04-feb,gradini,R410A,Elettronica,Assiali EC,Plug fan EC,G105,"101,99",kW,"109,2",%,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-8,AL-295,F,29.516,m3/h,929.0,Pa,26.15,m3/h,615.0,Pa,24.536,m3/h,75.0,%,10.499,m3/h,"147,8",kW,"35,3",kW,"4,2","131,6",kW,"26,6",kW,"5,5","99,7",kW,"21,2",kW,"3,9","44,7",kW,"181,7",kW,"5,4","25,4",kW,"163,9",kW,"5,1","54,3",kW,"145,6",kW,"6,1","131,2",%,"137,5",%,04-feb,gradini,R410A,Elettronica,Assiali EC,Plug fan EC,G162,"170,34",kW,"109,2",%,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+Modello Prodotto,Portata Massima
+AB-34,3.441
+CD-49,4.931
+EF-52,5.277
+GH-69,6.907
+IJ-75,7.5
+KL-84,8.444
+MN-10,10.551
+OP-11,11.148
+QR-72,7.215
+ST-78,7.897
+UV-86,8.656
+WX-111,11.158
+YZ-108,10.857
+AC-102,10.203
+AD-115,11.523
+AE-131,13.169
+AF-128,12.804
+AG-144,14.45
+AH-187,18.717
+AI-183,18.36
+AJ-195,19.533
+AK-233,23.337
+AL-295,29.516
+AM-282,28.284
+AN-270,27.048
+AO-358,35.887
+AP-353,35.321
+AQ-426,42.621
+AR-417,41.772
+AS-429,42.978
+AT-469,46.944
+AU-523,52.38
+AV-635,63.515
+AW-547,54.755
+AT-469,46.944
+AU-523,52.38
+AV-635,63.515
+AW-547,54.755
+AB-34,
+CD-49,
+EF-52,
+GH-69,
+IJ-75,
+AJ-195,
+AK-233,
+AL-295,
+AM-282,
+AN-270,
