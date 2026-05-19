@@ -1310,7 +1310,11 @@ REGOLE GLOBALI:
     {risposta_grezza}
     """
 
-    if any(t in ["estrai_dati_dinamici", "genera_grafico_avanzato", "mostra_tabella_dati"] for t in tool_usati):
+    if "genera_grafico_avanzato" in tool_usati:
+        risposta_assistente = "Ho generato il grafico in base alla tua richiesta."
+    elif "mostra_tabella_dati" in tool_usati:
+        risposta_assistente = "Ho generato la tabella con i dati richiesti."
+    elif "estrai_dati_dinamici" in tool_usati:
         risposta_assistente = pulisci_risposta_tool_per_utente(risposta_grezza)
     else:
         try:
