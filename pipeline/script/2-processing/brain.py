@@ -147,6 +147,7 @@ def converti_serie_numerica(serie):
     return serie.apply(converti_valore)
 
 indice_api_corrente = 0
+max_valori_colonne = {}
 
 def crea_llm_con_chiave(api_key: str):
     return ChatGoogleGenerativeAI(
@@ -880,29 +881,31 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
         fig_obj = scatola_sicura["fig"]
 
         try:
-            valori_y = []
-            for trace in fig_obj.data:
-                if hasattr(trace, "y"):
-                    for v in trace["y"]:
-                        try:
-                            if v is not None:
-                                valori_y.append(float(v))
-                        except (TypeError, ValueError):
-                            continue
+            y_title = ""
+            try:
+                y_title = getattr(fig_obj.layout.yaxis.title, "text", "") or ""
+            except Exception:
+                y_title = ""
 
-            if valori_y:
-                y_min = min(valori_y)
-                y_max = max(valori_y)
+            y_max_global = None
+            if y_title and y_title in max_valori_colonne:
+                y_max_global = max_valori_colonne[y_title]
 
-                if y_max > 0:
-                    span = y_max - y_min
+            if not y_max_global or y_max_global <= 0:
+                valori_y = []
+                for trace in fig_obj.data:
+                    if hasattr(trace, "y"):
+                        for v in trace["y"]:
+                            try:
+                                if v is not None:
+                                    valori_y.append(float(v))
+                            except (TypeError, ValueError):
+                                continue
+                if valori_y:
+                    y_max_global = max(valori_y)
 
-                    if y_min > 0 and span / y_max < 0.5:
-                        lower = max(y_min - span * 0.5, 0)
-                        upper = y_max + span * 0.25 if span > 0 else y_max * 1.1
-                        fig_obj.update_yaxes(range=[lower, upper])
-                    else:
-                        fig_obj.update_yaxes(range=[0, y_max * 1.1])
+            if y_max_global and y_max_global > 0:
+                fig_obj.update_yaxes(range=[0, y_max_global * 1.05])
         except Exception:
             pass
 
@@ -1443,6 +1446,14 @@ try:
 
         print(f"[CATALOGO] File caricato: {CATALOGO_PATH}")
         print(f"[CATALOGO] Righe: {len(df_catalogo)} | Colonne: {len(colonne_catalogo)}")
+
+        for col in colonne_catalogo:
+            try:
+                serie_num = converti_serie_numerica(df_catalogo[col])
+                if serie_num.notna().sum() > 0:
+                    max_valori_colonne[col] = float(serie_num.max())
+            except Exception:
+                continue
 
 except Exception as e:
     print(f"Errore caricamento catalogo da '{CATALOGO_PATH}': {e}")
