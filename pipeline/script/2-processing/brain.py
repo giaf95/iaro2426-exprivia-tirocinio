@@ -876,10 +876,20 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
                                 valori_y.append(float(v))
                         except (TypeError, ValueError):
                             continue
+
             if valori_y:
+                y_min = min(valori_y)
                 y_max = max(valori_y)
+
                 if y_max > 0:
-                    fig_obj.update_yaxes(range=[0, y_max * 1.1])
+                    span = y_max - y_min
+
+                    if y_min > 0 and span / y_max < 0.5:
+                        lower = max(y_min - span * 0.5, 0)
+                        upper = y_max + span * 0.25 if span > 0 else y_max * 1.1
+                        fig_obj.update_yaxes(range=[lower, upper])
+                    else:
+                        fig_obj.update_yaxes(range=[0, y_max * 1.1])
         except Exception:
             pass
 
