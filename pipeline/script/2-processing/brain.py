@@ -785,7 +785,9 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
         csv_path = CSV_GRAFICI_PATH
 
         if not os.path.exists(csv_path):
-            return "ERRORE: File dataframe_grafico.csv non trovato. Prima devi estrarre i dati."
+            esito_estrazione = estrai_dati_dinamici.invoke({"richiesta_utente": richiesta_utente})
+            if not esito_estrazione.startswith("SUCCESSO:"):
+                return esito_estrazione
 
         try:
             df_temp = pd.read_csv(csv_path)
@@ -904,7 +906,9 @@ def mostra_tabella_dati(richiesta_utente: str) -> str:
     csv_path = CSV_GRAFICI_PATH
 
     if not os.path.exists(csv_path):
-        return "ERRORE: File dataframe_grafico.csv non trovato. Prima devi estrarre i dati."
+        esito_estrazione = estrai_dati_dinamici.invoke({"richiesta_utente": richiesta_utente})
+        if not esito_estrazione.startswith("SUCCESSO:"):
+            return esito_estrazione
 
     try:
         df_temp = pd.read_csv(csv_path)
@@ -1115,64 +1119,10 @@ REGOLE GLOBALI:
     stato_grafico_chat = stato_grafici.get(chat_id)
     followup_grafico = False
 
-    match_top_tabella = re.search(r"(primi|prime|solo i primi|solo le prime)\s+(\d+)", testo_lower)
+    match_top_tabella = re.search(r"(primi|prime|solo i primi|solo le prime)\s+(\\d+)", testo_lower)
 
-    richiesta_confronto = any(token in testo_lower for token in ["maggiore", "minore", ">", "<", ">=", "<="])
-    contiene_numero = bool(re.search(r"\d+", testo_lower))
-    richiesta_visual_con_filtro = richiesta_visiva and richiesta_confronto and contiene_numero
-
-    # Gestione automatica: estrazione + tabella/grafico in un solo passaggio
-    if richiesta_visual_con_filtro:
-        esito_estrazione = estrai_dati_dinamici.invoke({"richiesta_utente": user_query})
-
-        if not esito_estrazione.startswith("SUCCESSO:"):
-            return {
-                "testo": pulisci_risposta_tool_per_utente(esito_estrazione),
-                "azioni": ["estrai_dati_dinamici"]
-            }
-
-        if "tabella" in testo_lower:
-            esito_tabella = mostra_tabella_dati.invoke({"richiesta_utente": user_query})
-
-            if esito_tabella.startswith("SUCCESSO_TABELLA::"):
-                payload = esito_tabella.split("SUCCESSO_TABELLA::", 1)[1].strip()
-                try:
-                    righe = json.loads(payload)
-                    return {
-                        "testo": "Ho estratto i dati e generato la tabella in base alla tua richiesta.",
-                        "azioni": ["estrai_dati_dinamici", "mostra_tabella_dati"],
-                        "dati_visivi": {"tipo": "tabella", "dati": righe}
-                    }
-                except Exception:
-                    return {
-                        "testo": pulisci_risposta_tool_per_utente(esito_tabella),
-                        "azioni": ["estrai_dati_dinamici", "mostra_tabella_dati"]
-                    }
-            else:
-                return {
-                    "testo": pulisci_risposta_tool_per_utente(esito_tabella),
-                    "azioni": ["estrai_dati_dinamici", "mostra_tabella_dati"]
-                }
-        else:
-            esito_grafico = genera_grafico_avanzato.invoke({"richiesta_utente": user_query})
-
-            if esito_grafico.startswith("SUCCESSO_GRAFICO::"):
-                path_grafico = esito_grafico.split("SUCCESSO_GRAFICO::", 1)[1].strip()
-                return {
-                    "testo": "Ho estratto i dati e generato il grafico in base alla tua richiesta.",
-                    "azioni": ["estrai_dati_dinamici", "genera_grafico_avanzato"],
-                    "dati_visivi": {
-                        "tipo": "grafico_html_file",
-                        "path": path_grafico
-                    }
-                }
-
-            return {
-                "testo": pulisci_risposta_tool_per_utente(esito_grafico),
-                "azioni": ["estrai_dati_dinamici", "genera_grafico_avanzato"]
-            }
-
-    # Gestione diretta della TABELLA sui dati già estratti (follow-up tipo "fammi una tabella")
+    # Gestione diretta della TABELLA sui dati estratti
+# Gestione diretta della TABELLA sui dati estratti
     if "tabella" in testo_lower or (match_top_tabella and "grafico" not in testo_lower and "diagramma" not in testo_lower):
         esito_tabella = mostra_tabella_dati.invoke({"richiesta_utente": user_query})
 
