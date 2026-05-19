@@ -182,6 +182,14 @@ def errore_quota_google(exc: Exception) -> bool:
         or "quota exceeded" in testo.lower()
     )
 
+def errore_servizio_google(exc: Exception) -> bool:
+    testo = str(exc)
+    return (
+        "503" in testo
+        or "UNAVAILABLE" in testo
+        or "high demand" in testo.lower()
+    )
+
 def invoca_llm_con_failover(input_llm):
     global llm, llm_con_tools, app, indice_api_corrente
 
@@ -768,8 +776,13 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
     except Exception as e:
         errore_testo = str(e)
 
-        if "RESOURCE_EXHAUSTED" in errore_testo or "429" in errore_testo or "quota" in errore_testo.lower():
-            return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. Riprova dopo il reset giornaliero oppure cambia modello/API key."
+        if errore_quota_google(e):
+            return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. " \
+                "Riprova dopo il reset giornaliero oppure cambia modello/API key."
+
+        if errore_servizio_google(e):
+            return "ERRORE LLM: il modello di Google è temporaneamente non disponibile (errore 503 / high demand). " \
+                "Riprova tra qualche minuto."
 
         return f"ERRORE DI ESECUZIONE PYTHON: {e}"
 
@@ -904,10 +917,15 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
     except Exception as e:
         errore_testo = str(e)
 
-        if "RESOURCE_EXHAUSTED" in errore_testo or "429" in errore_testo or "quota" in errore_testo.lower():
-            return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. Riprova dopo il reset giornaliero oppure cambia modello/API key."
+        if errore_quota_google(e):
+            return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. " \
+                "Riprova dopo il reset giornaliero oppure cambia modello/API key."
 
-        return f"ERRORE: {e}"
+        if errore_servizio_google(e):
+            return "ERRORE LLM: il modello di Google è temporaneamente non disponibile (errore 503 / high demand). " \
+                "Riprova tra qualche minuto."
+
+        return f"ERRORE DI ESECUZIONE PYTHON: {e}"
     
 @tool
 def mostra_tabella_dati(richiesta_utente: str) -> str:
@@ -1250,6 +1268,14 @@ REGOLE GLOBALI:
 
                 return {
                     "testo": "Quota Google esaurita su tutte le API key configurate per oggi.",
+                    "azioni": []
+                }
+
+            if errore_servizio_google(e):
+                print(f"[LLM] Servizio LLM temporaneamente non disponibile: {e}")
+                return {
+                    "testo": "Il modello di Google è temporaneamente non disponibile (errore 503). "
+                            "Di solito è un problema di sovraccarico: riprova tra qualche minuto.",
                     "azioni": []
                 }
 
