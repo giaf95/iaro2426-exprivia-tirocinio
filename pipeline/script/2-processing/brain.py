@@ -1061,37 +1061,49 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 - Usa ESCLUSIVAMENTE il tool 'cerca_manuali'.
 - Non usare 'cerca_sito_web' per queste domande.
 
-8. IF l'utente chiede un grafico o un diagramma basati direttamente su dati già estratti in CSV:
-- Usa il tool 'genera_grafico_avanzato'.
+8. IF l'utente, in UNA SINGOLA domanda, chiede un GRAFICO o una TABELLA sui dati del CATALOGO
+   (es. "genera un grafico con i modelli con Pressione Spinta Massima minore di 800",
+        "fammi una tabella dei modelli con Portata Massima maggiore di 5000"):
 
-9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati", "salva CSV":
-- Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente.
+   - PRIMA usa ESCLUSIVAMENTE il tool 'estrai_dati_dinamici' passando la frase completa dell'utente.
+   - SUBITO DOPO, nella stessa risposta, usa:
+     - 'genera_grafico_avanzato' se la richiesta parla di grafico, plot, diagramma, curva, chart;
+     - 'mostra_tabella_dati' se la richiesta parla di tabella, elenco in tabella, dati in tabella.
+   - NON usare mai un CSV precedente per rispondere a una nuova domanda con filtri sui dati.
+   - Il CSV deve sempre essere aggiornato dall'ULTIMA chiamata a 'estrai_dati_dinamici' relativa a quella domanda.
 
-10. IF l'utente chiede prima un'estrazione e poi anche una visualizzazione dei dati:
-- Prima usa 'estrai_dati_dinamici'.
-- Solo in un messaggio successivo dell'utente usa 'genera_grafico_avanzato'.
+9. IF l'utente chiede SOLO di estrarre o filtrare i dati (es. "estrai i modelli con Portata Massima > 5000 in un file CSV")
+   SENZA nominare grafici o tabelle:
 
-11. IF l'utente chiede di creare un GRAFICO o PLOTTARE i dati che sono stati estratti nel CSV:
-- Usa il tool 'genera_grafico_avanzato' passando la frase intera dell'utente.
-- Usa questo tool SOLO se esistono già dati estratti nel CSV.
-- Non descrivere il grafico a parole se puoi generarlo davvero.
+   - Usa SOLO il tool 'estrai_dati_dinamici'.
+   - NON creare grafici o tabelle a meno che l'utente non lo chieda esplicitamente in un messaggio separato.
 
-12. IF esiste già un grafico creato nella chat corrente e l'utente fa un follow-up come "ordina", "mostrami solo i primi 5", "cambia asse", "rifallo a barre", "fallo orizzontale":
-- Interpreta la richiesta come una MODIFICA del grafico corrente.
-- Non usare 'cerca_catalogo_generico' se la richiesta è chiaramente una modifica del grafico.
-- Rigenera il grafico aggiornato partendo dai dati già estratti.
-                                              
-13. IF l'utente chiede una TABELLA dei dati estratti (es. "fammi una tabella", "mostrami in tabella tutti i modelli estratti"):
-- Usa il tool 'mostra_tabella_dati' e NON il tool 'genera_grafico_avanzato'.
-- La tabella deve usare i dati già presenti nel file CSV creato da 'estrai_dati_dinamici'.
+10. IF esiste già un grafico o una tabella creati nella chat corrente e l'utente fa un follow-up come
+    "ordina", "mostrami solo i primi 5", "cambia asse", "rifallo a barre", "rendilo orizzontale":
+
+    - Considera questa richiesta come una MODIFICA della visualizzazione esistente.
+    - NON richiamare 'estrai_dati_dinamici' a meno che l'utente non cambi i FILTRI sui dati
+      (es. aggiunge o modifica condizioni sui parametri del catalogo).
+    - Usa solo:
+      - 'genera_grafico_avanzato' per aggiornare il grafico, oppure
+      - 'mostra_tabella_dati' per aggiornare la tabella,
+      partendo dal CSV già estratto per quella chat.
+
+11. È VIETATO usare 'genera_grafico_avanzato' o 'mostra_tabella_dati' da soli per una NUOVA domanda
+    che contiene filtri sui dati (condizioni tipo maggiore/minore/uguale) SENZA aver prima usato
+    'estrai_dati_dinamici' per quella domanda.
+
+12. IF l'utente chiede informazioni solo discorsive (senza numeri, senza richiesta di grafici o tabelle),
+    NON usare 'estrai_dati_dinamici', 'genera_grafico_avanzato' o 'mostra_tabella_dati'.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
 - NON inventare parametri. Se non li sai, chiedili.
 - DIVIETO DI CALCOLO A VUOTO: se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
 - DIVIETO DI JSON: Non rispondere mai mostrando codice JSON grezzo all'utente.
-- REGOLA TOOL: Chiama un solo tool per volta.
-- ECCEZIONE CONTROLLATA: se il risultato del tool contiene la stringa "ISTRUZIONE PER L'AI", non fermarti; usa quella istruzione come guida per chiamare ESATTAMENTE il tool successivo necessario.
+- REGOLA TOOL: In generale chiama un solo tool per volta.
+- ECCEZIONE 1 (grafici/tabelle): se l'utente chiede in UNA SINGOLA domanda un grafico o una tabella con filtri sui dati del catalogo, DEVI usare due tool in sequenza nella stessa risposta: prima 'estrai_dati_dinamici', poi 'genera_grafico_avanzato' o 'mostra_tabella_dati'.
+- ECCEZIONE 2 (ISTRUZIONE PER L'AI): se il risultato del tool contiene la stringa "ISTRUZIONE PER L'AI", non fermarti; usa quella istruzione come guida per chiamare ESATTAMENTE il tool successivo necessario.
 - REGOLA ANTI-LOOP: dopo il tool successivo richiesto dall'istruzione interna, formula la risposta finale per l'utente e fermati. Non eseguire catene extra o verifiche aggiuntive.
 - REGOLA DI PRIVACY: Non menzionare mai nomi di cartelle, percorsi di file o dettagli del sistema operativo nelle tue risposte.
 - REGOLA 'ISTRUZIONE PER L'AI': quando ricevi una risposta da un tool che contiene la stringa "ISTRUZIONE PER L'AI", non mostrare quella parte all'utente; usala solo come guida interna per decidere il prossimo tool da chiamare.""")
