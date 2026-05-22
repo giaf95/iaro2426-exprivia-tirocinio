@@ -1022,6 +1022,7 @@ def route_after_tool(state: AgentState) -> str:
 
 memoria_conversazioni = {}
 stato_grafici = {}
+stato_conversazione = {}
 
 def aggiorna_stato_grafico_da_followup(user_query: str, stato: dict) -> bool:
     testo = user_query.lower().strip()
@@ -1057,7 +1058,7 @@ def aggiorna_stato_grafico_da_followup(user_query: str, stato: dict) -> bool:
     return modificato
 
 def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
-    global memorie_conversazioni, llm, llm_con_tools, app
+    global memorie_conversazioni, llm, llm_con_tools, app, stato_conversazione
 
     if chat_id not in memoria_conversazioni:
         istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico HVAC. Devi rispettare RIGOROSAMENTE questo albero decisionale (IF/THEN):
@@ -1091,8 +1092,17 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 7. IF l'utente fa domande su MANUTENZIONE, FILTRI, INSTALLAZIONE, AVVIAMENTO, CODICI DI ERRORE/ALLARME o regolazioni pratiche (es. "come si installa", "come si puliscono i filtri", "errore E1", "come impostare la temperatura"):
 - Usa ESCLUSIVAMENTE il tool 'cerca_manuali'.
 - Non usare 'cerca_sito_web' per queste domande.
+                                              
+8. IF l'utente fa un follow-up riferito a un insieme di modelli appena trovati o appena proposti
+(es. "tra i modelli trovati", "tra questi", "quale di questi", "quali di quelli", "quello che consuma meno"):
 
-8. IF l'utente, in UNA SINGOLA domanda, chiede un GRAFICO o una TABELLA sui dati del CATALOGO
+- Considera come contesto prioritario gli ULTIMI modelli già emersi nella conversazione corrente.
+- NON trattare questa richiesta come una nuova estrazione sull'intero catalogo, a meno che l'utente non chieda esplicitamente "nuova ricerca", "nuova estrazione", "nel catalogo", "tutti i modelli" o un grafico/tabella/file.
+- Se la richiesta è discorsiva o comparativa, rispondi partendo solo dai modelli già trovati nella chat.
+- Se viene chiesto un confronto tecnico tra quei modelli (es. consumo, prevalenza, pressione, convenienza), usa i tool tecnici necessari riferendoti SOLO a quei modelli.
+- Se manca il riferimento ai modelli e non è recuperabile dalla cronologia recente, chiedi chiarimento.
+
+9. IF l'utente, in UNA SINGOLA domanda, chiede un GRAFICO o una TABELLA sui dati del CATALOGO
    (es. "genera un grafico con i modelli con Pressione Spinta Massima minore di 800",
         "fammi una tabella dei modelli con Portata Massima maggiore di 5000"):
 
@@ -1103,13 +1113,13 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
    - NON usare mai un CSV precedente per rispondere a una nuova domanda con filtri sui dati.
    - Il CSV deve sempre essere aggiornato dall'ULTIMA chiamata a 'estrai_dati_dinamici' relativa a quella domanda.
 
-9. IF l'utente chiede SOLO di estrarre o filtrare i dati (es. "estrai i modelli con Portata Massima > 5000 in un file CSV")
+10. IF l'utente chiede SOLO di estrarre o filtrare i dati (es. "estrai i modelli con Portata Massima > 5000 in un file CSV")
    SENZA nominare grafici o tabelle:
 
    - Usa SOLO il tool 'estrai_dati_dinamici'.
    - NON creare grafici o tabelle a meno che l'utente non lo chieda esplicitamente in un messaggio separato.
 
-10. IF esiste già un grafico o una tabella creati nella chat corrente e l'utente fa un follow-up come
+11. IF esiste già un grafico o una tabella creati nella chat corrente e l'utente fa un follow-up come
     "ordina", "mostrami solo i primi 5", "cambia asse", "rifallo a barre", "rendilo orizzontale":
 
     - Considera questa richiesta come una MODIFICA della visualizzazione esistente.
@@ -1120,11 +1130,11 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
       - 'mostra_tabella_dati' per aggiornare la tabella,
       partendo dal CSV già estratto per quella chat.
 
-11. È VIETATO usare 'genera_grafico_avanzato' o 'mostra_tabella_dati' da soli per una NUOVA domanda
+12. È VIETATO usare 'genera_grafico_avanzato' o 'mostra_tabella_dati' da soli per una NUOVA domanda
     che contiene filtri sui dati (condizioni tipo maggiore/minore/uguale) SENZA aver prima usato
     'estrai_dati_dinamici' per quella domanda.
 
-12. IF l'utente chiede informazioni solo discorsive (senza numeri, senza richiesta di grafici o tabelle),
+13. IF l'utente chiede informazioni solo discorsive (senza numeri, senza richiesta di grafici o tabelle),
     NON usare 'estrai_dati_dinamici', 'genera_grafico_avanzato' o 'mostra_tabella_dati'.
 
 REGOLE GLOBALI:
@@ -1153,11 +1163,71 @@ REGOLE GLOBALI:
             "grafico_presente": False
         }
 
+    if chat_id not in stato_conversazione:
+        stato_conversazione[chat_id] = {
+            "ultimi_modelli_trovati": []
+        }
+ 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
 
     testo_lower = user_query.lower()
     match_modello_specifico = re.search(r"\b\d{3}-\d{3}\b", user_query)
     richiesta_visiva = any(parola in testo_lower for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
+
+    ultimi_modelli = stato_conversazione.get(chat_id, {}).get("ultimi_modelli_trovati", [])
+
+    riferimento_ai_modelli_correnti = any(frase in testo_lower for frase in [
+        "tra i modelli trovati",
+        "tra questi",
+        "quale tra questi",
+        "quali tra questi",
+        "tra quelli trovati",
+        "quale di questi",
+        "quali di questi"
+    ])
+
+    if riferimento_ai_modelli_correnti and ultimi_modelli:
+        modelli_join = ", ".join(ultimi_modelli)
+
+        if "consuma meno" in testo_lower or "consumo" in testo_lower or "conviene" in testo_lower:
+            esito = calcola_consumo_elettrico.invoke({"codici_modelli": modelli_join})
+            return {
+                "testo": pulisci_risposta_tool_per_utente(esito),
+                "azioni": ["calcola_consumo_elettrico"]
+            }
+
+        if "pressione spinta massima" in testo_lower:
+            col_modello = trova_colonna_modello()
+            col_pressione = trova_colonna_esatta_o_simile("Pressione Spinta Massima", colonne_catalogo)
+
+            if col_modello and col_pressione and df_catalogo is not None:
+                df_subset = df_catalogo[
+                    df_catalogo[col_modello].astype(str).str.upper().isin(ultimi_modelli)
+                ].copy()
+
+                soglia_match = re.search(r"(\d+(?:[.,]\d+)?)", user_query)
+                soglia = None
+                if soglia_match:
+                    soglia = float(soglia_match.group(1).replace(",", "."))
+
+                if soglia is not None:
+                    serie_num = converti_serie_numerica(df_subset[col_pressione])
+                    df_subset = df_subset[serie_num > soglia].copy()
+
+                if df_subset.empty:
+                    return {
+                        "testo": "Tra i modelli trovati in precedenza non ce ne sono con Pressione Spinta Massima superiore alla soglia indicata.",
+                        "azioni": []
+                    }
+
+                righe = []
+                for _, row in df_subset.iterrows():
+                    righe.append(f"- Modello {row[col_modello]}: Pressione Spinta Massima = {row[col_pressione]}")
+
+                return {
+                    "testo": "Tra i modelli trovati in precedenza, quelli che soddisfano il filtro sono:\n" + "\n".join(righe),
+                    "azioni": []
+                }
 
     stato_grafico_chat = stato_grafici.get(chat_id)
     followup_grafico = False
@@ -1331,6 +1401,15 @@ REGOLE GLOBALI:
                 nome_tool = tool.get("name")
                 if nome_tool and nome_tool not in tool_usati:
                     tool_usati.append(nome_tool)
+
+    modelli_estratti = re.findall(r"Modello\s+([A-Za-z0-9\-]+)", risposta_grezza, flags=re.IGNORECASE)
+    if modelli_estratti:
+        modelli_unici = []
+        for m in modelli_estratti:
+            m_pulito = m.strip().upper()
+            if m_pulito not in modelli_unici:
+                modelli_unici.append(m_pulito)
+        stato_conversazione[chat_id]["ultimi_modelli_trovati"] = modelli_unici
 
     if istruzione_interna_tool:
         risultato_tool_successivo = esegui_istruzione_interna_tool(istruzione_interna_tool)
