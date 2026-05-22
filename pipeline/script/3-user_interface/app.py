@@ -326,7 +326,7 @@ for msg in cronologia_corrente:
                     import streamlit.components.v1 as components
                     components.html(codice, height=500, scrolling=True)
                 else:
-                    st.info("⚠️ Grafico precedente non disponibile (cronologia obsoleta).")
+                    st.info("Grafico precedente non disponibile (cronologia obsoleta).")
             
             # 3. Vecchia logica per prepara_dati_grafico (Commentata)
             # elif "dati" in dati:
