@@ -13,8 +13,13 @@ import streamlit.components.v1 as components
 cartella_corrente = os.path.dirname(os.path.abspath(__file__))
 cartella_script = os.path.abspath(os.path.join(cartella_corrente, '..'))
 cartella_processing = os.path.join(cartella_script, '2-processing')
+cartella_pipeline = os.path.abspath(os.path.join(cartella_script, '..'))
+cartella_root = os.path.abspath(os.path.join(cartella_pipeline, '..')) # La root del progetto
 sys.path.append(cartella_processing)
+sys.path.append(cartella_pipeline)
+sys.path.append(cartella_root)
 from brain import elabora_richiesta #type: ignore
+
 
 cartella_pipeline = os.path.abspath(os.path.join(cartella_script, '..'))
 DB_FILE = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'database_chat.db')
@@ -137,6 +142,21 @@ st.set_page_config(page_title="Zoppellaro AI", layout="wide", initial_sidebar_st
 if "user_id" not in st.session_state:
     st.session_state.user_id = "utente_01"
 
+if "ultimi_dati_estratti" not in st.session_state:
+    percorso_csv_avvio = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'dataframe_grafico.csv')
+    # Se il file esiste fisicamente, lo pre-carichiamo all'avvio!
+    if os.path.exists(percorso_csv_avvio):
+        try:
+            if os.path.exists(percorso_csv_avvio):
+                try:
+                    st.session_state.ultimi_dati_estratti = pd.read_csv(percorso_csv_avvio, sep=',')
+                except Exception:
+                    st.session_state.ultimi_dati_estratti = None
+        except Exception:
+            st.session_state.ultimi_dati_estratti = None
+    else:
+        st.session_state.ultimi_dati_estratti = None
+
 if "memoria_utenti" not in st.session_state:
     st.session_state.memoria_utenti = {}
 if st.session_state.user_id not in st.session_state.memoria_utenti:
@@ -177,11 +197,33 @@ with st.sidebar:
         dati_utente["chat_attiva"] = nuovo_nome
         salva_memoria_utente(st.session_state.user_id, nuovo_nome, [])
         st.rerun()
+
+# Storico Chat scrollabile
+    with st.container(height=250):
+        for nome_chat in list(dati_utente["tutte_le_chat"].keys()):
+            if st.button(f"{nome_chat}", key=f"{st.session_state.user_id}_{nome_chat}", use_container_width=True):
+                dati_utente["chat_attiva"] = nome_chat
+                st.rerun()
+
+    # 2. DOWNLOAD DATI ESTRATTI
+    st.divider()
+    st.subheader("Report Dati")
+    if st.session_state.ultimi_dati_estratti is not None:
+        df_export = st.session_state.ultimi_dati_estratti
         
-    for nome_chat in list(dati_utente["tutte_le_chat"].keys()):
-        if st.button(f"{nome_chat}", key=f"{st.session_state.user_id}_{nome_chat}", use_container_width=True):
-            dati_utente["chat_attiva"] = nome_chat
-            st.rerun()
+        with st.expander("Anteprima dati"):
+            st.dataframe(df_export, hide_index=True)
+            
+        csv = df_export.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
+        st.download_button(
+            label="Scarica CSV",
+            data=csv,
+            file_name="estrazione_tecnica.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    else:
+        st.info("Nessun dato estratto nell'ultima richiesta.")
 
     st.markdown("Rinomina Chat")
     nuovo_nome_input = st.text_input("Nuovo nome per la chat", value=dati_utente["chat_attiva"])
@@ -204,12 +246,20 @@ with st.sidebar:
     if len(dati_utente["tutte_le_chat"]) == 1:
         st.error("Non puoi eliminare l'unica chat esistente. Crea prima una nuova chat.")
     else:
-        chat_da_eliminare = st.selectbox("Seleziona la chat che vuoi eliminare", list(dati_utente["tutte_le_chat"].keys()))
+        lista_chat = list(dati_utente["tutte_le_chat"].keys())
+        indice_ultima_chat = len(lista_chat) - 1
+        chat_da_eliminare = st.selectbox(
+            "Seleziona la chat che vuoi eliminare", 
+            lista_chat,
+            index=indice_ultima_chat
+        )
         if st.button("Elimina chat"):
             elimina_chat(st.session_state.user_id, chat_da_eliminare)
             dati_utente["tutte_le_chat"].pop(chat_da_eliminare)
+        
             if dati_utente["chat_attiva"] == chat_da_eliminare: 
-                dati_utente["chat_attiva"] = list(dati_utente["tutte_le_chat"].keys())[0]
+                dati_utente["chat_attiva"] = list(dati_utente["tutte_le_chat"].keys())[-1]
+                
             st.success(f"Chat '{chat_da_eliminare}' eliminata.")
             st.rerun()
 #----------------------------------------------------------
@@ -230,6 +280,17 @@ cronologia_corrente = dati_utente["tutte_le_chat"][chat_attiva]
 for msg in cronologia_corrente:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
+        
+        # --- NUOVO: MOSTRA TABELLA PULITA ANCHE NELLO STORICO ---
+        if msg["role"] == "assistant" and "Dati estratti e salvati" in msg["content"]:
+            percorso_csv = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'dataframe_grafico.csv')
+            if os.path.exists(percorso_csv):
+                try:
+                    df_storico = pd.read_csv(percorso_csv, sep=',')
+                    st.write("**Tabella Dati Estratti:**")
+                    st.dataframe(df_storico, hide_index=True, use_container_width=True)
+                except Exception as e:
+                    pass
         if "azioni" in msg and msg["azioni"]:
             st.caption(f" Azioni compiute: {', '.join(msg['azioni'])}")
 
@@ -254,6 +315,7 @@ for msg in cronologia_corrente:
                 try:
                     df_visivo = pd.DataFrame(dati["dati"])
                     st.dataframe(df_visivo, width="stretch", hide_index=True)
+                    st.session_state.ultimi_dati_estratti = df_visivo
                 except Exception as e:
                     st.error(f"Errore nel rendering della tabella: {e}")
 
@@ -331,10 +393,39 @@ if user_query:
                 response = elabora_richiesta(user_query, chat_id=id_chat_corrente)
                 
                 st.write(response["testo"])
-                if "SUCCESSO: Dati estratti e salvati" in response["testo"]:
-                    st.success("CSV creato correttamente.")
-                if "SUCCESSO: Grafico generato correttamente." in response["testo"]:
-                    st.success("Grafico creato correttamente.")
+                
+                # --- LOGICA PER LA CHAT E LA SIDEBAR ---
+                dati_appena_estratti = False
+                
+                if "Dati estratti e salvati" in response["testo"]:
+                    percorso_csv = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'dataframe_grafico.csv')
+                    if os.path.exists(percorso_csv):
+                        try:
+                            df_estratto = pd.read_csv(percorso_csv, sep=',')
+                            
+                            # 2. MOSTRA LA TABELLA PULITA DIRETTAMENTE IN CHAT
+                            st.write("**Tabella Dati Estratti:**")
+                            st.dataframe(df_estratto, hide_index=True, use_container_width=True)
+                            
+                            # 3. SALVIAMO IN MEMORIA per il download nella sidebar
+                            st.session_state.ultimi_dati_estratti = df_estratto
+                            dati_appena_estratti = True
+                            
+                        except Exception as e:
+                            pass
+                
+                # Salvataggio della cronologia della chat
+                cronologia_corrente.append({
+                    "role": "assistant", 
+                    "content": response["testo"],
+                    "azioni": response.get("azioni", []),
+                    "dati_visivi": response.get("dati_visivi")
+                })
+                salva_memoria_utente(st.session_state.user_id, chat_attiva, cronologia_corrente)
+                
+                if dati_appena_estratti:
+                    st.rerun()
+                # ---------------------------------------------------
                 if response.get("dati_visivi"):
                     dati = response["dati_visivi"]
 
