@@ -1164,9 +1164,23 @@ REGOLE GLOBALI:
 
     match_top_tabella = re.search(r"(primi|prime|solo i primi|solo le prime)\s+(\\d+)", testo_lower)
 
-    # Gestione diretta della TABELLA sui dati estratti
-# Gestione diretta della TABELLA sui dati estratti
-    if "tabella" in testo_lower or (match_top_tabella and "grafico" not in testo_lower and "diagramma" not in testo_lower):
+    # Gestione diretta della TABELLA sui dati estratti (solo richieste positive)
+    ha_negazione = any(nega in testo_lower for nega in ["non voglio", "non ho chiesto", "senza tabella", "no tabella"])
+
+    chiede_tabella_esplicita = (
+        ("tabella" in testo_lower)
+        and any(verb in testo_lower for verb in ["mostra", "fammi", "genera", "crea", "visualizza", "vedere"])
+        and not ha_negazione
+    )
+
+    chiede_solo_top = (
+        match_top_tabella
+        and "grafico" not in testo_lower
+        and "diagramma" not in testo_lower
+        and not ha_negazione
+    )
+
+    if chiede_tabella_esplicita or chiede_solo_top:
         esito_tabella = mostra_tabella_dati.invoke({"richiesta_utente": user_query})
 
         if esito_tabella.startswith("SUCCESSO_TABELLA::"):
