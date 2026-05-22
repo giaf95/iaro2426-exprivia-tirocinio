@@ -147,10 +147,11 @@ if "ultimi_dati_estratti" not in st.session_state:
     # Se il file esiste fisicamente, lo pre-carichiamo all'avvio!
     if os.path.exists(percorso_csv_avvio):
         try:
-            try:
-                st.session_state.ultimi_dati_estratti = pd.read_csv(percorso_csv_avvio, sep=';')
-            except:
-                st.session_state.ultimi_dati_estratti = pd.read_csv(percorso_csv_avvio, sep=',')
+            if os.path.exists(percorso_csv_avvio):
+                try:
+                    st.session_state.ultimi_dati_estratti = pd.read_csv(percorso_csv_avvio, sep=',')
+                except Exception:
+                    st.session_state.ultimi_dati_estratti = None
         except Exception:
             st.session_state.ultimi_dati_estratti = None
     else:
@@ -196,7 +197,8 @@ with st.sidebar:
         dati_utente["chat_attiva"] = nuovo_nome
         salva_memoria_utente(st.session_state.user_id, nuovo_nome, [])
         st.rerun()
-        
+
+# Storico Chat scrollabile
     with st.container(height=250):
         for nome_chat in list(dati_utente["tutte_le_chat"].keys()):
             if st.button(f"{nome_chat}", key=f"{st.session_state.user_id}_{nome_chat}", use_container_width=True):
@@ -245,20 +247,19 @@ with st.sidebar:
         st.error("Non puoi eliminare l'unica chat esistente. Crea prima una nuova chat.")
     else:
         lista_chat = list(dati_utente["tutte_le_chat"].keys())
-        try:
-            indice_chat_attiva = lista_chat.index(dati_utente["chat_attiva"])
-        except ValueError:
-            indice_chat_attiva = 0 # Sicurezza in caso di errore
+        indice_ultima_chat = len(lista_chat) - 1
         chat_da_eliminare = st.selectbox(
             "Seleziona la chat che vuoi eliminare", 
             lista_chat,
-            index=indice_chat_attiva
+            index=indice_ultima_chat
         )
         if st.button("Elimina chat"):
             elimina_chat(st.session_state.user_id, chat_da_eliminare)
             dati_utente["tutte_le_chat"].pop(chat_da_eliminare)
+        
             if dati_utente["chat_attiva"] == chat_da_eliminare: 
                 dati_utente["chat_attiva"] = list(dati_utente["tutte_le_chat"].keys())[-1]
+                
             st.success(f"Chat '{chat_da_eliminare}' eliminata.")
             st.rerun()
 #----------------------------------------------------------
@@ -279,6 +280,17 @@ cronologia_corrente = dati_utente["tutte_le_chat"][chat_attiva]
 for msg in cronologia_corrente:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
+        
+        # --- NUOVO: MOSTRA TABELLA PULITA ANCHE NELLO STORICO ---
+        if msg["role"] == "assistant" and "Dati estratti e salvati" in msg["content"]:
+            percorso_csv = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'dataframe_grafico.csv')
+            if os.path.exists(percorso_csv):
+                try:
+                    df_storico = pd.read_csv(percorso_csv, sep=',')
+                    st.write("**Tabella Dati Estratti:**")
+                    st.dataframe(df_storico, hide_index=True, use_container_width=True)
+                except Exception as e:
+                    pass
         if "azioni" in msg and msg["azioni"]:
             st.caption(f" Azioni compiute: {', '.join(msg['azioni'])}")
 
@@ -382,24 +394,25 @@ if user_query:
                 
                 st.write(response["testo"])
                 
-                # --- LOGICA PER LA SIDEBAR ---
+                # --- LOGICA PER LA CHAT E LA SIDEBAR ---
                 dati_appena_estratti = False
                 
                 if "Dati estratti e salvati" in response["testo"]:
                     percorso_csv = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'dataframe_grafico.csv')
                     if os.path.exists(percorso_csv):
                         try:
-                            try:
-                                df_estratto = pd.read_csv(percorso_csv, sep=';')
-                            except:
-                                df_estratto = pd.read_csv(percorso_csv, sep=',')
+                            df_estratto = pd.read_csv(percorso_csv, sep=',')
                             
-                            # SALVIAMO IN MEMORIA (Senza stampare nulla in chat!)
+                            # 2. MOSTRA LA TABELLA PULITA DIRETTAMENTE IN CHAT
+                            st.write("**Tabella Dati Estratti:**")
+                            st.dataframe(df_estratto, hide_index=True, use_container_width=True)
+                            
+                            # 3. SALVIAMO IN MEMORIA per il download nella sidebar
                             st.session_state.ultimi_dati_estratti = df_estratto
                             dati_appena_estratti = True
                             
                         except Exception as e:
-                            pass 
+                            pass
                 
                 # Salvataggio della cronologia della chat
                 cronologia_corrente.append({
