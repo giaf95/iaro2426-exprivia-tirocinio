@@ -1162,14 +1162,21 @@ REGOLE GLOBALI:
     stato_grafico_chat = stato_grafici.get(chat_id)
     followup_grafico = False
 
-    match_top_tabella = re.search(r"(primi|prime|solo i primi|solo le prime)\s+(\\d+)", testo_lower)
+    match_top_tabella = re.search(r"(primi|prime|solo i primi|solo le prime)\\s+(\\d+)", testo_lower)
 
     # Gestione diretta della TABELLA sui dati estratti (solo richieste positive)
-    ha_negazione = any(nega in testo_lower for nega in ["non voglio", "non ho chiesto", "senza tabella", "no tabella"])
+    ha_negazione = any(nega in testo_lower for nega in [
+        "non voglio",
+        "non ho chiesto",
+        "senza tabella",
+        "no tabella"
+    ])
 
     chiede_tabella_esplicita = (
         ("tabella" in testo_lower)
-        and any(verb in testo_lower for verb in ["mostra", "fammi", "genera", "crea", "visualizza", "vedere"])
+        and any(verb in testo_lower for verb in [
+            "mostra", "fammi", "genera", "crea", "visualizza", "vedere"
+        ])
         and not ha_negazione
     )
 

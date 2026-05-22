@@ -281,16 +281,6 @@ for msg in cronologia_corrente:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
         
-        # --- NUOVO: MOSTRA TABELLA PULITA ANCHE NELLO STORICO ---
-        if msg["role"] == "assistant" and "Dati estratti e salvati" in msg["content"]:
-            percorso_csv = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'dataframe_grafico.csv')
-            if os.path.exists(percorso_csv):
-                try:
-                    df_storico = pd.read_csv(percorso_csv, sep=',')
-                    st.write("**Tabella Dati Estratti:**")
-                    st.dataframe(df_storico, hide_index=True, width="stretch")
-                except Exception as e:
-                    pass
         if "azioni" in msg and msg["azioni"]:
             st.caption(f" Azioni compiute: {', '.join(msg['azioni'])}")
 
@@ -396,22 +386,15 @@ if user_query:
                 
                 # --- LOGICA PER LA CHAT E LA SIDEBAR ---
                 dati_appena_estratti = False
-                
+
                 if "Dati estratti e salvati" in response["testo"]:
                     percorso_csv = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'dataframe_grafico.csv')
                     if os.path.exists(percorso_csv):
                         try:
                             df_estratto = pd.read_csv(percorso_csv, sep=',')
-                            
-                            # 2. MOSTRA LA TABELLA PULITA DIRETTAMENTE IN CHAT
-                            st.write("**Tabella Dati Estratti:**")
-                            st.dataframe(df_estratto, hide_index=True, width="stretch")
-                            
-                            # 3. SALVIAMO IN MEMORIA per il download nella sidebar
                             st.session_state.ultimi_dati_estratti = df_estratto
                             dati_appena_estratti = True
-                            
-                        except Exception as e:
+                        except Exception:
                             pass
                 
                 # Salvataggio della cronologia della chat
@@ -487,14 +470,6 @@ if user_query:
                     #     elif dati["tipo"] == "tabella":
                     #         st.markdown(f"**Tabella: {dati['titolo']}**")
                     #         st.dataframe(df_visivo, width="stretch", hide_index=True)
-                
-                cronologia_corrente.append({
-                    "role": "assistant", 
-                    "content": response["testo"],
-                    "azioni": response["azioni"],
-                    "dati_visivi": response.get("dati_visivi")
-                })
-                salva_memoria_utente(st.session_state.user_id, chat_attiva, cronologia_corrente)
                 
             except Exception as e:
                 st.error(f"Si è verificato un errore nel motore: {e}")
