@@ -818,7 +818,12 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
             .str.strip()
         )
 
-        df_temp = df_temp.drop_duplicates().reset_index(drop=True)
+        # deduplica su Modello Prodotto se presente, altrimenti dedup completo
+        col_modello_graph = next((c for c in df_temp.columns if "modello" in c.lower()), None)
+        if col_modello_graph:
+            df_temp = df_temp.drop_duplicates(subset=[col_modello_graph]).reset_index(drop=True)
+        else:
+            df_temp = df_temp.drop_duplicates().reset_index(drop=True)
         colonne = list(df_temp.columns)
 
         prompt = f"""
