@@ -819,6 +819,7 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
         )
 
         colonne = list(df_temp.columns)
+        df_temp = df_temp.drop_duplicates()
 
         prompt = f"""
 L'utente vuole un grafico basato su un dataframe Pandas già pronto.
