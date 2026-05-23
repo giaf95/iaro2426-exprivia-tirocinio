@@ -818,8 +818,8 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
             .str.strip()
         )
 
+        df_temp = df_temp.drop_duplicates().reset_index(drop=True)
         colonne = list(df_temp.columns)
-        df_temp = df_temp.drop_duplicates()
 
         prompt = f"""
 L'utente vuole un grafico basato su un dataframe Pandas già pronto.
@@ -831,7 +831,7 @@ Colonne reali del dataframe df:
 {colonne}
 
 REGOLE OBBLIGATORIE:
-1. Usa solo 'df' e 'px'.
+1. Usa solo 'df' e 'px'. Il dataframe 'df' contiene GIA' i dati filtrati e pronti: NON applicare ulteriori filtri su df (niente df[df[...] ...]).
 2. Crea ESATTAMENTE una variabile finale chiamata fig.
 3. Non usare print.
 4. Non usare fig.show().
