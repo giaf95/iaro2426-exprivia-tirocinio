@@ -906,7 +906,20 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
                     y_max_global = max(valori_y)
 
             if y_max_global and y_max_global > 0:
-                fig_obj.update_yaxes(range=[0, y_max_global * 1.05])
+                # calcola il minimo tra i valori Y per restringere l'asse
+                valori_min = []
+                for trace in fig_obj.data:
+                    if hasattr(trace, "y"):
+                        for v in trace["y"]:
+                            try:
+                                if v is not None:
+                                    valori_min.append(float(v))
+                            except (TypeError, ValueError):
+                                continue
+                y_min_globale = min(valori_min) if valori_min else 0
+                margine = (y_max_global - y_min_globale) * 0.15
+                asse_min = max(0, y_min_globale - margine)
+                fig_obj.update_yaxes(range=[asse_min, y_max_global * 1.02])
         except Exception:
             pass
 
