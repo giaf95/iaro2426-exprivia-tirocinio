@@ -698,6 +698,11 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         
         df_lavoro = df_catalogo.copy()
         df_lavoro.columns = df_lavoro.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
+        
+        # deduplica per modello prima dell'exec per evitare righe doppie nel CSV
+        col_mod = next((c for c in df_lavoro.columns if "modello" in c.lower()), None)
+        if col_mod:
+            df_lavoro = df_lavoro.drop_duplicates(subset=[col_mod]).reset_index(drop=True)
         colonne_reali = list(df_lavoro.columns)
         
         prompt = f"""
@@ -798,10 +803,9 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
     try:
         csv_path = CSV_GRAFICI_PATH
 
-        if not os.path.exists(csv_path):
-            esito_estrazione = estrai_dati_dinamici.invoke({"richiesta_utente": richiesta_utente})
-            if not esito_estrazione.startswith("SUCCESSO:"):
-                return esito_estrazione
+        esito_estrazione = estrai_dati_dinamici.invoke({"richiesta_utente": richiesta_utente})
+        if not esito_estrazione.startswith("SUCCESSO:"):
+            return esito_estrazione
 
         try:
             df_temp = pd.read_csv(csv_path)
@@ -949,10 +953,9 @@ def mostra_tabella_dati(richiesta_utente: str) -> str:
     print(f"\n[TOOL] Esecuzione MOSTRA_TABELLA_DATI -> Richiesta: '{richiesta_utente}'")
     csv_path = CSV_GRAFICI_PATH
 
-    if not os.path.exists(csv_path):
-        esito_estrazione = estrai_dati_dinamici.invoke({"richiesta_utente": richiesta_utente})
-        if not esito_estrazione.startswith("SUCCESSO:"):
-            return esito_estrazione
+    esito_estrazione = estrai_dati_dinamici.invoke({"richiesta_utente": richiesta_utente})
+    if not esito_estrazione.startswith("SUCCESSO:"):
+        return esito_estrazione
 
     try:
         df_temp = pd.read_csv(csv_path)
