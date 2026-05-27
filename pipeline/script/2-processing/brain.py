@@ -818,12 +818,6 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
             .str.strip()
         )
 
-        # deduplica su Modello Prodotto se presente, altrimenti dedup completo
-        col_modello_graph = next((c for c in df_temp.columns if "modello" in c.lower()), None)
-        if col_modello_graph:
-            df_temp = df_temp.drop_duplicates(subset=[col_modello_graph]).reset_index(drop=True)
-        else:
-            df_temp = df_temp.drop_duplicates().reset_index(drop=True)
         colonne = list(df_temp.columns)
 
         prompt = f"""
@@ -1556,6 +1550,13 @@ try:
             .str.replace(r"\s+", " ", regex=True)
             .str.strip()
         )
+
+        # deduplica per modello
+        col_modello_src = next((c for c in df_catalogo.columns if "modello" in c.lower()), None)
+        if col_modello_src:
+            df_catalogo = df_catalogo.drop_duplicates(subset=[col_modello_src]).reset_index(drop=True)
+        else:
+            df_catalogo = df_catalogo.drop_duplicates().reset_index(drop=True)
 
         colonne_catalogo = []
         for col in df_catalogo.columns:
