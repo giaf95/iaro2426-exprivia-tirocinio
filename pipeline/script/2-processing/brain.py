@@ -796,7 +796,10 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
 def genera_grafico_avanzato(richiesta_utente: str) -> str:
     """Usa questo tool SOLO quando l'utente chiede esplicitamente di creare o mostrare un grafico
     partendo dai dati già estratti nel file CSV generato da estrai_dati_dinamici.
-    - richiesta_utente: frase completa dell'utente."""
+    - richiesta_utente: frase completa dell'utente.
+    REGOLE RIGIDE: Se l'utente non specifica il tipo di grafico, genera sempre un grafico a barre (px.bar). 
+    Assegna di default la colonna 'Modello Prodotto' all'asse X e i valori da confrontare all'asse Y.
+    Evita assolutamente i grafici a dispersione (scatter) e non generare legende ingombranti."""
     print(f"\n[TOOL] Esecuzione GENERA_GRAFICO_AVANZATO -> Richiesta: '{richiesta_utente}'")
 
 
