@@ -1060,20 +1060,30 @@ def aggiorna_stato_grafico_da_followup(user_query: str, stato: dict) -> bool:
     testo = user_query.lower().strip()
     modificato = False
 
+    ha_richiesta_grafico = (
+        "grafico" in testo
+        or "diagramma" in testo
+        or "plot" in testo
+        or "istogramma" in testo
+        or "a barre" in testo
+    )
+    if not ha_richiesta_grafico:
+        return False
+
     if "grafico" in testo or "barre" in testo:
         stato["tipo"] = "bar"
         modificato = True
 
-    if "ordina" in testo and ("alto" in testo or "decresc" in testo):
+    if ("ordina" in testo and "alto" in testo) or "decresc" in testo:
         stato["ordinamento"] = "decrescente"
         modificato = True
-    elif "ordina" in testo and ("basso" in testo or "cresc" in testo):
+    elif ("ordina" in testo and "basso" in testo) or "cresc" in testo:
         stato["ordinamento"] = "crescente"
         modificato = True
 
-    match_top = re.search(r"(primi|solo i primi)\s+(\d+)", testo)
+    match_top = re.search(r"(?:primi|solo i primi)\s*(\d+)", testo)
     if match_top:
-        stato["top_n"] = int(match_top.group(2))
+        stato["top_n"] = int(match_top.group(1))
         modificato = True
 
     if "pressione spinta massima" in testo:
@@ -1082,7 +1092,6 @@ def aggiorna_stato_grafico_da_followup(user_query: str, stato: dict) -> bool:
 
     if "modello" in testo or "modelli" in testo:
         stato["x"] = "Modello Prodotto"
-        modificato = True
 
     if modificato:
         stato["grafico_presente"] = True
