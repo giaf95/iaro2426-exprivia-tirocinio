@@ -806,9 +806,22 @@ def genera_grafico_avanzato(richiesta_utente: str) -> str:
     try:
         csv_path = CSV_GRAFICI_PATH
 
-        esito_estrazione = estrai_dati_dinamici.invoke({"richiesta_utente": richiesta_utente})
-        if not esito_estrazione.startswith("SUCCESSO:"):
-            return esito_estrazione
+        def contiene_filtro_numerico(testo: str) -> bool:
+            t = testo.lower()
+            if re.search(r"[><=]\s*\d", t):
+                return True
+            if "maggiore di" in t or "minore di" in t or "uguale a" in t:
+                return True
+            return False
+
+        if contiene_filtro_numerico(richiesta_utente):
+            esito_estrazione = estrai_dati_dinamici.invoke({"richiesta_utente": richiesta_utente})
+            if not esito_estrazione.startswith("SUCCESSO:"):
+                return esito_estrazione
+        else:
+            if not os.path.exists(csv_path):
+                return ("ERRORE: nessun dataset filtrato è disponibile per il grafico. "
+                        "Devi prima usare il tool 'estrai_dati_dinamici' con i filtri desiderati.")
 
         try:
             df_temp = pd.read_csv(csv_path)
