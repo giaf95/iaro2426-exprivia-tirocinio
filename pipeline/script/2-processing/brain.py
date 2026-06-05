@@ -794,10 +794,11 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
 
 @tool
 def genera_grafico_avanzato(richiesta_utente: str) -> str:
-    """Usa questo tool SOLO quando l'utente chiede esplicitamente di creare o mostrare un grafico
-    partendo dai dati già estratti nel file CSV generato da estrai_dati_dinamici.
-    - richiesta_utente: frase completa dell'utente.
-    REGOLE RIGIDE: Se l'utente non specifica il tipo di grafico, genera sempre un grafico a barre (px.bar). 
+    """Usa questo tool quando l'utente chiede di creare o mostrare un grafico, anche con filtri sui dati
+    (es. 'genera un grafico con i modelli con Pressione Spinta Massima maggiore di 650').
+    Questo tool gestisce autonomamente l'estrazione dei dati filtrati: NON chiamare 'estrai_dati_dinamici' prima.
+    - richiesta_utente: frase completa dell'utente, inclusi eventuali filtri numerici.
+    REGOLE RIGIDE: Se l'utente non specifica il tipo di grafico, genera sempre un grafico a barre (px.bar).
     Assegna di default la colonna 'Modello Prodotto' all'asse X e i valori da confrontare all'asse Y.
     Evita assolutamente i grafici a dispersione (scatter) e non generare legende ingombranti."""
     print(f"\n[TOOL] Esecuzione GENERA_GRAFICO_AVANZATO -> Richiesta: '{richiesta_utente}'")
@@ -1150,12 +1151,10 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
    (es. "genera un grafico con i modelli con Pressione Spinta Massima minore di 800",
         "fammi una tabella dei modelli con Portata Massima maggiore di 5000"):
 
-   - PRIMA usa ESCLUSIVAMENTE il tool 'estrai_dati_dinamici' passando la frase completa dell'utente.
-   - SUBITO DOPO, nella stessa risposta, usa:
-     - 'genera_grafico_avanzato' se la richiesta parla di grafico, plot, diagramma, curva, chart;
-     - 'mostra_tabella_dati' se la richiesta parla di tabella, elenco in tabella, dati in tabella.
-   - NON usare mai un CSV precedente per rispondere a una nuova domanda con filtri sui dati.
-   - Il CSV deve sempre essere aggiornato dall'ULTIMA chiamata a 'estrai_dati_dinamici' relativa a quella domanda.
+   - Se la richiesta parla di grafico, plot, diagramma, curva, chart: usa DIRETTAMENTE 'genera_grafico_avanzato'.
+     NON chiamare 'estrai_dati_dinamici' prima: il tool gestisce l'estrazione internamente.
+   - Se la richiesta parla di tabella, elenco in tabella, dati in tabella: usa DIRETTAMENTE 'mostra_tabella_dati'.
+     NON chiamare 'estrai_dati_dinamici' prima: il tool gestisce l'estrazione internamente.
 
 10. IF l'utente chiede SOLO di estrarre o filtrare i dati (es. "estrai i modelli con Portata Massima > 5000 in un file CSV")
    SENZA nominare grafici o tabelle:
@@ -1174,11 +1173,7 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
       - 'mostra_tabella_dati' per aggiornare la tabella,
       partendo dal CSV già estratto per quella chat.
 
-12. È VIETATO usare 'genera_grafico_avanzato' o 'mostra_tabella_dati' da soli per una NUOVA domanda
-    che contiene filtri sui dati (condizioni tipo maggiore/minore/uguale) SENZA aver prima usato
-    'estrai_dati_dinamici' per quella domanda.
-
-13. IF l'utente chiede informazioni solo discorsive (senza numeri, senza richiesta di grafici o tabelle),
+12. IF l'utente chiede informazioni solo discorsive (senza numeri, senza richiesta di grafici o tabelle),
     NON usare 'estrai_dati_dinamici', 'genera_grafico_avanzato' o 'mostra_tabella_dati'.
 
 REGOLE GLOBALI:
@@ -1187,7 +1182,7 @@ REGOLE GLOBALI:
 - DIVIETO DI CALCOLO A VUOTO: se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
 - DIVIETO DI JSON: Non rispondere mai mostrando codice JSON grezzo all'utente.
 - REGOLA TOOL: In generale chiama un solo tool per volta.
-- ECCEZIONE 1 (grafici/tabelle): se l'utente chiede in UNA SINGOLA domanda un grafico o una tabella con filtri sui dati del catalogo, DEVI usare due tool in sequenza nella stessa risposta: prima 'estrai_dati_dinamici', poi 'genera_grafico_avanzato' o 'mostra_tabella_dati'.
+- ECCEZIONE 1 (grafici/tabelle): se l'utente chiede un grafico o una tabella con filtri sui dati, chiama DIRETTAMENTE 'genera_grafico_avanzato' o 'mostra_tabella_dati'. Questi tool gestiscono l'estrazione dati internamente: NON serve chiamare 'estrai_dati_dinamici' prima.
 - ECCEZIONE 2 (ISTRUZIONE PER L'AI): se il risultato del tool contiene la stringa "ISTRUZIONE PER L'AI", non fermarti; usa quella istruzione come guida per chiamare ESATTAMENTE il tool successivo necessario.
 - REGOLA ANTI-LOOP: dopo il tool successivo richiesto dall'istruzione interna, formula la risposta finale per l'utente e fermati. Non eseguire catene extra o verifiche aggiuntive.
 - REGOLA DI PRIVACY: Non menzionare mai nomi di cartelle, percorsi di file o dettagli del sistema operativo nelle tue risposte.
