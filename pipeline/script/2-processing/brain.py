@@ -858,8 +858,9 @@ REGOLE OBBLIGATORIE:
 6. Non creare dataframe di esempio.
 7. Usa solo colonne realmente presenti.
 8. Restituisci solo codice Python valido, preferibilmente dentro ```python.
-9. Se la richiesta è ambigua, crea un grafico a barre semplice usando la prima colonna testuale come asse x e la prima colonna numerica come asse y.
+9. Se la richiesta è ambigua, crea SEMPRE un grafico a barre semplice usando la prima colonna testuale come asse x e la prima colonna numerica come asse y.
 10. Se possibile imposta anche un titolo chiaro con fig.update_layout(title="...").
+11. È VIETATO usare px.scatter o altri tipi di grafico: DEVI usare esclusivamente px.bar.
 
 ESEMPI VALIDI:
 
@@ -868,7 +869,7 @@ fig = px.bar(df, x="Modello Prodotto", y="Portata Massima", title="Portata Massi
 ```
 
 ```python
-fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grandezza Telaio", title="Portata vs Pressione")
+fig = px.bar(df, x="Pressione Spinta Massima", y="Portata Massima", title="Portata Massima vs Pressione Spinta Massima")
 ```
 """
 
@@ -883,6 +884,8 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
 
         if codice_pulito.startswith("python"):
             codice_pulito = codice_pulito[len("python"):].strip()
+
+        codice_pulito = codice_pulito.replace("px.scatter", "px.bar")
 
         print("[DEBUG LLM] Codice Plotly generato:")
         print(codice_pulito)
