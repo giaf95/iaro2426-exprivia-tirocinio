@@ -51,7 +51,7 @@ def scelta(percorso_scelto):
             pagina = documento.load_page(numero_pagina)
             pixel = pagina.get_pixmap(matrix = fitz.Matrix(2, 2))
             immagine = Image.frombytes("RGB", [pixel.width, pixel.height], pixel.samples)
-            st.image(immagine, caption=f"Pagina {numero_pagina + 1}",use_container_width=True)
+            st.image(immagine, caption=f"Pagina {numero_pagina + 1}",width="stretch")
 
         
 opzione = st.selectbox("Seleziona un file da vedere", list(file_disponibili.keys()), index=None, placeholder="Scegli un file...")
@@ -190,7 +190,7 @@ with st.sidebar:
     st.divider()
     st.subheader("Storico Chat")
     
-    if st.button("Nuova Chat", use_container_width=True):
+    if st.button("Nuova Chat", width="stretch"):
         dati_utente["contatore_chat"] += 1
         nuovo_nome = f"Chat {dati_utente['contatore_chat']}"
         dati_utente["tutte_le_chat"][nuovo_nome] = []
@@ -201,7 +201,7 @@ with st.sidebar:
 # Storico Chat scrollabile
     with st.container(height=250):
         for nome_chat in list(dati_utente["tutte_le_chat"].keys()):
-            if st.button(f"{nome_chat}", key=f"{st.session_state.user_id}_{nome_chat}", use_container_width=True):
+            if st.button(f"{nome_chat}", key=f"{st.session_state.user_id}_{nome_chat}", width="stretch"):
                 dati_utente["chat_attiva"] = nome_chat
                 st.rerun()
 
@@ -220,7 +220,7 @@ with st.sidebar:
             data=csv,
             file_name="estrazione_tecnica.csv",
             mime="text/csv",
-            use_container_width=True
+            width="stretch"
         )
     else:
         st.info("Nessun dato estratto nell'ultima richiesta.")
@@ -281,16 +281,6 @@ for msg in cronologia_corrente:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
         
-        # --- NUOVO: MOSTRA TABELLA PULITA ANCHE NELLO STORICO ---
-        if msg["role"] == "assistant" and "Dati estratti e salvati" in msg["content"]:
-            percorso_csv = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'dataframe_grafico.csv')
-            if os.path.exists(percorso_csv):
-                try:
-                    df_storico = pd.read_csv(percorso_csv, sep=',')
-                    st.write("**Tabella Dati Estratti:**")
-                    st.dataframe(df_storico, hide_index=True, use_container_width=True)
-                except Exception as e:
-                    pass
         if "azioni" in msg and msg["azioni"]:
             st.caption(f" Azioni compiute: {', '.join(msg['azioni'])}")
 
@@ -326,17 +316,17 @@ for msg in cronologia_corrente:
                     import streamlit.components.v1 as components
                     components.html(codice, height=500, scrolling=True)
                 else:
-                    st.info("⚠️ Grafico precedente non disponibile (cronologia obsoleta).")
+                    st.info("Grafico precedente non disponibile (cronologia obsoleta).")
             
             # 3. Vecchia logica per prepara_dati_grafico (Commentata)
             # elif "dati" in dati:
             #     df_visivo = pd.DataFrame(dati["dati"])
             #     if dati["tipo"] == "grafico_barre":
             #         figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati.get("titolo", ""))
-            #         st.plotly_chart(figura, use_container_width=True)
+            #         st.plotly_chart(figura, width="stretch")
             #     elif dati["tipo"] == "tabella":
             #         st.markdown(f"**Tabella: {dati.get('titolo', '')}**")
-            #         st.dataframe(df_visivo, use_container_width=True, hide_index=True)
+            #         st.dataframe(df_visivo, width="stretch", hide_index=True)
 
 #------------------- TEST ----------------------------------------------
 #storico_chat_finto = [
@@ -368,11 +358,11 @@ for msg in cronologia_corrente:
             #st.markdown(messaggio["contenuto"])  
         #elif messaggio["tipo_messaggio"] == "tabella_excel":
             #df = pd.read_excel(messaggio["contenuto"])
-            #st.dataframe(df, use_container_width=True) 
+            #st.dataframe(df, width="stretch") 
         #elif messaggio["tipo_messaggio"] == "grafico_excel":
            # df = pd.read_excel(messaggio["contenuto"])
             #figura = px.bar(df, x="Modello PAL", y="Portata Massima Mandata Standard", title="Analisi Portata per Modello")
-            #st.plotly_chart(figura, use_container_width=True)
+            #st.plotly_chart(figura, width="stretch")
         #else:
             #st.markdown("Tipo di messaggio non riconosciuto.")
 #-----------------------------------------------------------------------
@@ -396,32 +386,35 @@ if user_query:
                 
                 # --- LOGICA PER LA CHAT E LA SIDEBAR ---
                 dati_appena_estratti = False
-                
+
                 if "Dati estratti e salvati" in response["testo"]:
                     percorso_csv = os.path.join(cartella_pipeline, 'data', '3-user_interface', 'dataframe_grafico.csv')
                     if os.path.exists(percorso_csv):
                         try:
                             df_estratto = pd.read_csv(percorso_csv, sep=',')
-                            
-                            # 2. MOSTRA LA TABELLA PULITA DIRETTAMENTE IN CHAT
-                            st.write("**Tabella Dati Estratti:**")
-                            st.dataframe(df_estratto, hide_index=True, use_container_width=True)
-                            
-                            # 3. SALVIAMO IN MEMORIA per il download nella sidebar
                             st.session_state.ultimi_dati_estratti = df_estratto
                             dati_appena_estratti = True
-                            
-                        except Exception as e:
+                        except Exception:
                             pass
                 
                 # Salvataggio della cronologia della chat
-                cronologia_corrente.append({
-                    "role": "assistant", 
+                nuovo_messaggio_assistente = {
+                    "role": "assistant",
                     "content": response["testo"],
-                    "azioni": response.get("azioni", []),
+                    "azioni": response["azioni"],
                     "dati_visivi": response.get("dati_visivi")
-                })
-                salva_memoria_utente(st.session_state.user_id, chat_attiva, cronologia_corrente)
+                }
+
+                # Anti-duplicato: non salvare due volte la stessa risposta consecutiva
+                if not cronologia_corrente or cronologia_corrente[-1].get("role") != "assistant" \
+                or cronologia_corrente[-1].get("content") != response["testo"]:
+                    cronologia_corrente.append(nuovo_messaggio_assistente)
+                    salva_memoria_utente(st.session_state.user_id, chat_attiva, cronologia_corrente)
+                else:
+                    # Se è identica all'ultima, aggiorno solo eventuali dati_visivi mancanti
+                    if not cronologia_corrente[-1].get("dati_visivi") and response.get("dati_visivi"):
+                        cronologia_corrente[-1]["dati_visivi"] = response["dati_visivi"]
+                        salva_memoria_utente(st.session_state.user_id, chat_attiva, cronologia_corrente)
                 
                 if dati_appena_estratti:
                     st.rerun()
@@ -473,18 +466,10 @@ if user_query:
                     #     df_visivo = pd.DataFrame(dati["dati"])
                     #     if dati["tipo"] == "grafico_barre":
                     #         figura = px.bar(df_visivo, x="Modello", y="Valore", title=dati["titolo"])
-                    #         st.plotly_chart(figura, use_container_width=True)
+                    #         st.plotly_chart(figura, width="stretch")
                     #     elif dati["tipo"] == "tabella":
                     #         st.markdown(f"**Tabella: {dati['titolo']}**")
-                    #         st.dataframe(df_visivo, use_container_width=True, hide_index=True)
-                
-                cronologia_corrente.append({
-                    "role": "assistant", 
-                    "content": response["testo"],
-                    "azioni": response["azioni"],
-                    "dati_visivi": response.get("dati_visivi")
-                })
-                salva_memoria_utente(st.session_state.user_id, chat_attiva, cronologia_corrente)
+                    #         st.dataframe(df_visivo, width="stretch", hide_index=True)
                 
             except Exception as e:
                 st.error(f"Si è verificato un errore nel motore: {e}")

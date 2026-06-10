@@ -22,7 +22,7 @@ import plotly.express as px
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 _cartella_script = os.path.dirname(_script_dir)
 sys.path.insert(0, _cartella_script)
-from prototype.davide.config import CATALOGO_PATH, GOOGLE_API_KEYS, CSV_GRAFICI_PATH, DIR_GRAFICI_SALVATI
+from config import CATALOGO_PATH, GOOGLE_API_KEYS, CSV_GRAFICI_PATH, DIR_GRAFICI_SALVATI
 
 class AgentState(TypedDict):
     messages: Annotated[List, operator.add]
@@ -147,6 +147,7 @@ def converti_serie_numerica(serie):
     return serie.apply(converti_valore)
 
 indice_api_corrente = 0
+max_valori_colonne = {}
 
 def crea_llm_con_chiave(api_key: str):
     return ChatGoogleGenerativeAI(
@@ -180,6 +181,14 @@ def errore_quota_google(exc: Exception) -> bool:
         or "429" in testo
         or "GenerateRequestsPerDayPerProjectPerModel-FreeTier" in testo
         or "quota exceeded" in testo.lower()
+    )
+
+def errore_servizio_google(exc: Exception) -> bool:
+    testo = str(exc)
+    return (
+        "503" in testo
+        or "UNAVAILABLE" in testo
+        or "high demand" in testo.lower()
     )
 
 def invoca_llm_con_failover(input_llm):
@@ -689,6 +698,11 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
         
         df_lavoro = df_catalogo.copy()
         df_lavoro.columns = df_lavoro.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
+        
+        # deduplica per modello prima dell'exec per evitare righe doppie nel CSV
+        col_mod = next((c for c in df_lavoro.columns if "modello" in c.lower()), None)
+        if col_mod:
+            df_lavoro = df_lavoro.drop_duplicates(subset=[col_mod]).reset_index(drop=True)
         colonne_reali = list(df_lavoro.columns)
         
         prompt = f"""
@@ -768,24 +782,47 @@ def estrai_dati_dinamici(richiesta_utente: str) -> str:
     except Exception as e:
         errore_testo = str(e)
 
-        if "RESOURCE_EXHAUSTED" in errore_testo or "429" in errore_testo or "quota" in errore_testo.lower():
-            return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. Riprova dopo il reset giornaliero oppure cambia modello/API key."
+        if errore_quota_google(e):
+            return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. " \
+                "Riprova dopo il reset giornaliero oppure cambia modello/API key."
+
+        if errore_servizio_google(e):
+            return "ERRORE LLM: il modello di Google è temporaneamente non disponibile (errore 503 / high demand). " \
+                "Riprova tra qualche minuto."
 
         return f"ERRORE DI ESECUZIONE PYTHON: {e}"
 
 @tool
 def genera_grafico_avanzato(richiesta_utente: str) -> str:
-    """Usa questo tool SOLO quando l'utente chiede esplicitamente di creare o mostrare un grafico
-    partendo dai dati già estratti nel file CSV generato da estrai_dati_dinamici.
-    - richiesta_utente: frase completa dell'utente."""
+    """Usa questo tool quando l'utente chiede di creare o mostrare un grafico, anche con filtri sui dati
+    (es. 'genera un grafico con i modelli con Pressione Spinta Massima maggiore di 650').
+    Questo tool gestisce autonomamente l'estrazione dei dati filtrati: NON chiamare 'estrai_dati_dinamici' prima.
+    - richiesta_utente: frase completa dell'utente, inclusi eventuali filtri numerici.
+    REGOLE RIGIDE: Se l'utente non specifica il tipo di grafico, genera sempre un grafico a barre (px.bar).
+    Assegna di default la colonna 'Modello Prodotto' all'asse X e i valori da confrontare all'asse Y.
+    Evita assolutamente i grafici a dispersione (scatter) e non generare legende ingombranti."""
     print(f"\n[TOOL] Esecuzione GENERA_GRAFICO_AVANZATO -> Richiesta: '{richiesta_utente}'")
 
 
     try:
         csv_path = CSV_GRAFICI_PATH
 
-        if not os.path.exists(csv_path):
-            return "ERRORE: File dataframe_grafico.csv non trovato. Prima devi estrarre i dati."
+        def contiene_filtro_numerico(testo: str) -> bool:
+            t = testo.lower()
+            if re.search(r"[><=]\s*\d", t):
+                return True
+            if "maggiore di" in t or "minore di" in t or "uguale a" in t:
+                return True
+            return False
+
+        if contiene_filtro_numerico(richiesta_utente):
+            esito_estrazione = estrai_dati_dinamici.invoke({"richiesta_utente": richiesta_utente})
+            if not esito_estrazione.startswith("SUCCESSO:"):
+                return esito_estrazione
+        else:
+            if not os.path.exists(csv_path):
+                return ("ERRORE: nessun dataset filtrato è disponibile per il grafico. "
+                        "Devi prima usare il tool 'estrai_dati_dinamici' con i filtri desiderati.")
 
         try:
             df_temp = pd.read_csv(csv_path)
@@ -814,7 +851,7 @@ Colonne reali del dataframe df:
 {colonne}
 
 REGOLE OBBLIGATORIE:
-1. Usa solo 'df' e 'px'.
+1. Usa solo 'df' e 'px'. Il dataframe 'df' contiene GIA' i dati filtrati e pronti: NON applicare ulteriori filtri su df (niente df[df[...] ...]).
 2. Crea ESATTAMENTE una variabile finale chiamata fig.
 3. Non usare print.
 4. Non usare fig.show().
@@ -822,8 +859,9 @@ REGOLE OBBLIGATORIE:
 6. Non creare dataframe di esempio.
 7. Usa solo colonne realmente presenti.
 8. Restituisci solo codice Python valido, preferibilmente dentro ```python.
-9. Se la richiesta è ambigua, crea un grafico a barre semplice usando la prima colonna testuale come asse x e la prima colonna numerica come asse y.
+9. Se la richiesta è ambigua, crea SEMPRE un grafico a barre semplice usando la prima colonna testuale come asse x e la prima colonna numerica come asse y.
 10. Se possibile imposta anche un titolo chiaro con fig.update_layout(title="...").
+11. È VIETATO usare px.scatter o altri tipi di grafico: DEVI usare esclusivamente px.bar.
 
 ESEMPI VALIDI:
 
@@ -832,7 +870,7 @@ fig = px.bar(df, x="Modello Prodotto", y="Portata Massima", title="Portata Massi
 ```
 
 ```python
-fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grandezza Telaio", title="Portata vs Pressione")
+fig = px.bar(df, x="Pressione Spinta Massima", y="Portata Massima", title="Portata Massima vs Pressione Spinta Massima")
 ```
 """
 
@@ -847,6 +885,8 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
 
         if codice_pulito.startswith("python"):
             codice_pulito = codice_pulito[len("python"):].strip()
+
+        codice_pulito = codice_pulito.replace("px.scatter", "px.bar")
 
         print("[DEBUG LLM] Codice Plotly generato:")
         print(codice_pulito)
@@ -865,19 +905,44 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
         fig_obj = scatola_sicura["fig"]
 
         try:
-            valori_y = []
-            for trace in fig_obj.data:
-                if hasattr(trace, "y"):
-                    for v in trace["y"]:
-                        try:
-                            if v is not None:
-                                valori_y.append(float(v))
-                        except (TypeError, ValueError):
-                            continue
-            if valori_y:
-                y_max = max(valori_y)
-                if y_max > 0:
-                    fig_obj.update_yaxes(range=[0, y_max * 1.1])
+            y_title = ""
+            try:
+                y_title = getattr(fig_obj.layout.yaxis.title, "text", "") or ""
+            except Exception:
+                y_title = ""
+
+            y_max_global = None
+            if y_title and y_title in max_valori_colonne:
+                y_max_global = max_valori_colonne[y_title]
+
+            if not y_max_global or y_max_global <= 0:
+                valori_y = []
+                for trace in fig_obj.data:
+                    if hasattr(trace, "y"):
+                        for v in trace["y"]:
+                            try:
+                                if v is not None:
+                                    valori_y.append(float(v))
+                            except (TypeError, ValueError):
+                                continue
+                if valori_y:
+                    y_max_global = max(valori_y)
+
+            if y_max_global and y_max_global > 0:
+                # calcola il minimo tra i valori Y per restringere l'asse
+                valori_min = []
+                for trace in fig_obj.data:
+                    if hasattr(trace, "y"):
+                        for v in trace["y"]:
+                            try:
+                                if v is not None:
+                                    valori_min.append(float(v))
+                            except (TypeError, ValueError):
+                                continue
+                y_min_globale = min(valori_min) if valori_min else 0
+                margine = (y_max_global - y_min_globale) * 0.15
+                asse_min = max(0, y_min_globale - margine)
+                fig_obj.update_yaxes(range=[asse_min, y_max_global * 1.02])
         except Exception:
             pass
 
@@ -892,10 +957,15 @@ fig = px.scatter(df, x="Portata Massima", y="Pressione Operativa", color="Grande
     except Exception as e:
         errore_testo = str(e)
 
-        if "RESOURCE_EXHAUSTED" in errore_testo or "429" in errore_testo or "quota" in errore_testo.lower():
-            return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. Riprova dopo il reset giornaliero oppure cambia modello/API key."
+        if errore_quota_google(e):
+            return "ERRORE QUOTA LLM: hai esaurito la quota gratuita del modello Gemini attualmente in uso. " \
+                "Riprova dopo il reset giornaliero oppure cambia modello/API key."
 
-        return f"ERRORE: {e}"
+        if errore_servizio_google(e):
+            return "ERRORE LLM: il modello di Google è temporaneamente non disponibile (errore 503 / high demand). " \
+                "Riprova tra qualche minuto."
+
+        return f"ERRORE DI ESECUZIONE PYTHON: {e}"
     
 @tool
 def mostra_tabella_dati(richiesta_utente: str) -> str:
@@ -903,8 +973,9 @@ def mostra_tabella_dati(richiesta_utente: str) -> str:
     print(f"\n[TOOL] Esecuzione MOSTRA_TABELLA_DATI -> Richiesta: '{richiesta_utente}'")
     csv_path = CSV_GRAFICI_PATH
 
-    if not os.path.exists(csv_path):
-        return "ERRORE: File dataframe_grafico.csv non trovato. Prima devi estrarre i dati."
+    esito_estrazione = estrai_dati_dinamici.invoke({"richiesta_utente": richiesta_utente})
+    if not esito_estrazione.startswith("SUCCESSO:"):
+        return esito_estrazione
 
     try:
         df_temp = pd.read_csv(csv_path)
@@ -987,25 +1058,36 @@ def route_after_tool(state: AgentState) -> str:
 
 memoria_conversazioni = {}
 stato_grafici = {}
+stato_conversazione = {}
 
 def aggiorna_stato_grafico_da_followup(user_query: str, stato: dict) -> bool:
     testo = user_query.lower().strip()
     modificato = False
 
+    ha_richiesta_grafico = (
+        "grafico" in testo
+        or "diagramma" in testo
+        or "plot" in testo
+        or "istogramma" in testo
+        or "a barre" in testo
+    )
+    if not ha_richiesta_grafico:
+        return False
+
     if "grafico" in testo or "barre" in testo:
         stato["tipo"] = "bar"
         modificato = True
 
-    if "ordina" in testo and ("alto" in testo or "decresc" in testo):
+    if ("ordina" in testo and "alto" in testo) or "decresc" in testo:
         stato["ordinamento"] = "decrescente"
         modificato = True
-    elif "ordina" in testo and ("basso" in testo or "cresc" in testo):
+    elif ("ordina" in testo and "basso" in testo) or "cresc" in testo:
         stato["ordinamento"] = "crescente"
         modificato = True
 
-    match_top = re.search(r"(primi|solo i primi)\s+(\d+)", testo)
+    match_top = re.search(r"(?:primi|solo i primi)\s*(\d+)", testo)
     if match_top:
-        stato["top_n"] = int(match_top.group(2))
+        stato["top_n"] = int(match_top.group(1))
         modificato = True
 
     if "pressione spinta massima" in testo:
@@ -1014,7 +1096,6 @@ def aggiorna_stato_grafico_da_followup(user_query: str, stato: dict) -> bool:
 
     if "modello" in testo or "modelli" in testo:
         stato["x"] = "Modello Prodotto"
-        modificato = True
 
     if modificato:
         stato["grafico_presente"] = True
@@ -1022,7 +1103,7 @@ def aggiorna_stato_grafico_da_followup(user_query: str, stato: dict) -> bool:
     return modificato
 
 def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dict:
-    global memorie_conversazioni, llm, llm_con_tools, app
+    global memorie_conversazioni, llm, llm_con_tools, app, stato_conversazione
 
     if chat_id not in memoria_conversazioni:
         istruzioni_di_sistema = SystemMessage(content="""Sei un assistente tecnico HVAC. Devi rispettare RIGOROSAMENTE questo albero decisionale (IF/THEN):
@@ -1056,38 +1137,53 @@ def elabora_richiesta(user_query: str, chat_id: str = "chat_predefinita") -> dic
 7. IF l'utente fa domande su MANUTENZIONE, FILTRI, INSTALLAZIONE, AVVIAMENTO, CODICI DI ERRORE/ALLARME o regolazioni pratiche (es. "come si installa", "come si puliscono i filtri", "errore E1", "come impostare la temperatura"):
 - Usa ESCLUSIVAMENTE il tool 'cerca_manuali'.
 - Non usare 'cerca_sito_web' per queste domande.
-
-8. IF l'utente chiede un grafico o un diagramma basati direttamente su dati già estratti in CSV:
-- Usa il tool 'genera_grafico_avanzato'.
-
-9. IF l'utente chiede estrazioni dati particolari, incroci complessi, o usa parole come "crea un nuovo file", "estrai i dati", "salva CSV":
-- Usa il tool 'estrai_dati_dinamici'. Passagli la richiesta completa dell'utente.
-
-10. IF l'utente chiede prima un'estrazione e poi anche una visualizzazione dei dati:
-- Prima usa 'estrai_dati_dinamici'.
-- Solo in un messaggio successivo dell'utente usa 'genera_grafico_avanzato'.
-
-11. IF l'utente chiede di creare un GRAFICO o PLOTTARE i dati che sono stati estratti nel CSV:
-- Usa il tool 'genera_grafico_avanzato' passando la frase intera dell'utente.
-- Usa questo tool SOLO se esistono già dati estratti nel CSV.
-- Non descrivere il grafico a parole se puoi generarlo davvero.
-
-12. IF esiste già un grafico creato nella chat corrente e l'utente fa un follow-up come "ordina", "mostrami solo i primi 5", "cambia asse", "rifallo a barre", "fallo orizzontale":
-- Interpreta la richiesta come una MODIFICA del grafico corrente.
-- Non usare 'cerca_catalogo_generico' se la richiesta è chiaramente una modifica del grafico.
-- Rigenera il grafico aggiornato partendo dai dati già estratti.
                                               
-13. IF l'utente chiede una TABELLA dei dati estratti (es. "fammi una tabella", "mostrami in tabella tutti i modelli estratti"):
-- Usa il tool 'mostra_tabella_dati' e NON il tool 'genera_grafico_avanzato'.
-- La tabella deve usare i dati già presenti nel file CSV creato da 'estrai_dati_dinamici'.
+8. IF l'utente fa un follow-up riferito a un insieme di modelli appena trovati o appena proposti
+(es. "tra i modelli trovati", "tra questi", "quale di questi", "quali di quelli", "quello che consuma meno"):
+
+- Considera come contesto prioritario gli ULTIMI modelli già emersi nella conversazione corrente.
+- NON trattare questa richiesta come una nuova estrazione sull'intero catalogo, a meno che l'utente non chieda esplicitamente "nuova ricerca", "nuova estrazione", "nel catalogo", "tutti i modelli" o un grafico/tabella/file.
+- Se la richiesta è discorsiva o comparativa, rispondi partendo solo dai modelli già trovati nella chat.
+- Se viene chiesto un confronto tecnico tra quei modelli (es. consumo, prevalenza, pressione, convenienza), usa i tool tecnici necessari riferendoti SOLO a quei modelli.
+- Se manca il riferimento ai modelli e non è recuperabile dalla cronologia recente, chiedi chiarimento.
+
+9. IF l'utente, in UNA SINGOLA domanda, chiede un GRAFICO o una TABELLA sui dati del CATALOGO
+   (es. "genera un grafico con i modelli con Pressione Spinta Massima minore di 800",
+        "fammi una tabella dei modelli con Portata Massima maggiore di 5000"):
+
+   - Se la richiesta parla di grafico, plot, diagramma, curva, chart: usa DIRETTAMENTE 'genera_grafico_avanzato'.
+     NON chiamare 'estrai_dati_dinamici' prima: il tool gestisce l'estrazione internamente.
+   - Se la richiesta parla di tabella, elenco in tabella, dati in tabella: usa DIRETTAMENTE 'mostra_tabella_dati'.
+     NON chiamare 'estrai_dati_dinamici' prima: il tool gestisce l'estrazione internamente.
+
+10. IF l'utente chiede SOLO di estrarre o filtrare i dati (es. "estrai i modelli con Portata Massima > 5000 in un file CSV")
+   SENZA nominare grafici o tabelle:
+
+   - Usa SOLO il tool 'estrai_dati_dinamici'.
+   - NON creare grafici o tabelle a meno che l'utente non lo chieda esplicitamente in un messaggio separato.
+
+11. IF esiste già un grafico o una tabella creati nella chat corrente e l'utente fa un follow-up come
+    "ordina", "mostrami solo i primi 5", "cambia asse", "rifallo a barre", "rendilo orizzontale":
+
+    - Considera questa richiesta come una MODIFICA della visualizzazione esistente.
+    - NON richiamare 'estrai_dati_dinamici' a meno che l'utente non cambi i FILTRI sui dati
+      (es. aggiunge o modifica condizioni sui parametri del catalogo).
+    - Usa solo:
+      - 'genera_grafico_avanzato' per aggiornare il grafico, oppure
+      - 'mostra_tabella_dati' per aggiornare la tabella,
+      partendo dal CSV già estratto per quella chat.
+
+12. IF l'utente chiede informazioni solo discorsive (senza numeri, senza richiesta di grafici o tabelle),
+    NON usare 'estrai_dati_dinamici', 'genera_grafico_avanzato' o 'mostra_tabella_dati'.
 
 REGOLE GLOBALI:
 - Rispondi SOLO in Italiano.
 - NON inventare parametri. Se non li sai, chiedili.
 - DIVIETO DI CALCOLO A VUOTO: se l'utente fa una domanda puramente discorsiva e NON fornisce numeri (kW, mq, persone, Pascal), ti è ASSOLUTAMENTE VIETATO usare i tool di calcolo (termico, aria, elettrico, prevalenza). Usa solo il dizionario o rispondi a parole.
 - DIVIETO DI JSON: Non rispondere mai mostrando codice JSON grezzo all'utente.
-- REGOLA TOOL: Chiama un solo tool per volta.
-- ECCEZIONE CONTROLLATA: se il risultato del tool contiene la stringa "ISTRUZIONE PER L'AI", non fermarti; usa quella istruzione come guida per chiamare ESATTAMENTE il tool successivo necessario.
+- REGOLA TOOL: In generale chiama un solo tool per volta.
+- ECCEZIONE 1 (grafici/tabelle): se l'utente chiede un grafico o una tabella con filtri sui dati, chiama DIRETTAMENTE 'genera_grafico_avanzato' o 'mostra_tabella_dati'. Questi tool gestiscono l'estrazione dati internamente: NON serve chiamare 'estrai_dati_dinamici' prima.
+- ECCEZIONE 2 (ISTRUZIONE PER L'AI): se il risultato del tool contiene la stringa "ISTRUZIONE PER L'AI", non fermarti; usa quella istruzione come guida per chiamare ESATTAMENTE il tool successivo necessario.
 - REGOLA ANTI-LOOP: dopo il tool successivo richiesto dall'istruzione interna, formula la risposta finale per l'utente e fermati. Non eseguire catene extra o verifiche aggiuntive.
 - REGOLA DI PRIVACY: Non menzionare mai nomi di cartelle, percorsi di file o dettagli del sistema operativo nelle tue risposte.
 - REGOLA 'ISTRUZIONE PER L'AI': quando ricevi una risposta da un tool che contiene la stringa "ISTRUZIONE PER L'AI", non mostrare quella parte all'utente; usala solo come guida interna per decidere il prossimo tool da chiamare.""")
@@ -1106,20 +1202,101 @@ REGOLE GLOBALI:
             "grafico_presente": False
         }
 
+    if chat_id not in stato_conversazione:
+        stato_conversazione[chat_id] = {
+            "ultimi_modelli_trovati": []
+        }
+ 
     memoria_conversazioni[chat_id].append(HumanMessage(content=user_query))
 
     testo_lower = user_query.lower()
     match_modello_specifico = re.search(r"\b\d{3}-\d{3}\b", user_query)
     richiesta_visiva = any(parola in testo_lower for parola in ["grafico", "diagramma", "tabella", "analisi visiva"])
 
+    ultimi_modelli = stato_conversazione.get(chat_id, {}).get("ultimi_modelli_trovati", [])
+
+    riferimento_ai_modelli_correnti = any(frase in testo_lower for frase in [
+        "tra i modelli trovati",
+        "tra questi",
+        "quale tra questi",
+        "quali tra questi",
+        "tra quelli trovati",
+        "quale di questi",
+        "quali di questi"
+    ])
+
+    if riferimento_ai_modelli_correnti and ultimi_modelli:
+        modelli_join = ", ".join(ultimi_modelli)
+
+        if "consuma meno" in testo_lower or "consumo" in testo_lower or "conviene" in testo_lower:
+            esito = calcola_consumo_elettrico.invoke({"codici_modelli": modelli_join})
+            return {
+                "testo": pulisci_risposta_tool_per_utente(esito),
+                "azioni": ["calcola_consumo_elettrico"]
+            }
+
+        if "pressione spinta massima" in testo_lower:
+            col_modello = trova_colonna_modello()
+            col_pressione = trova_colonna_esatta_o_simile("Pressione Spinta Massima", colonne_catalogo)
+
+            if col_modello and col_pressione and df_catalogo is not None:
+                df_subset = df_catalogo[
+                    df_catalogo[col_modello].astype(str).str.upper().isin(ultimi_modelli)
+                ].copy()
+
+                soglia_match = re.search(r"(\d+(?:[.,]\d+)?)", user_query)
+                soglia = None
+                if soglia_match:
+                    soglia = float(soglia_match.group(1).replace(",", "."))
+
+                if soglia is not None:
+                    serie_num = converti_serie_numerica(df_subset[col_pressione])
+                    df_subset = df_subset[serie_num > soglia].copy()
+
+                if df_subset.empty:
+                    return {
+                        "testo": "Tra i modelli trovati in precedenza non ce ne sono con Pressione Spinta Massima superiore alla soglia indicata.",
+                        "azioni": []
+                    }
+
+                righe = []
+                for _, row in df_subset.iterrows():
+                    righe.append(f"- Modello {row[col_modello]}: Pressione Spinta Massima = {row[col_pressione]}")
+
+                return {
+                    "testo": "Tra i modelli trovati in precedenza, quelli che soddisfano il filtro sono:\n" + "\n".join(righe),
+                    "azioni": []
+                }
+
     stato_grafico_chat = stato_grafici.get(chat_id)
     followup_grafico = False
 
-    match_top_tabella = re.search(r"(primi|prime|solo i primi|solo le prime)\s+(\\d+)", testo_lower)
+    match_top_tabella = re.search(r"(primi|prime|solo i primi|solo le prime)\\s+(\\d+)", testo_lower)
 
-    # Gestione diretta della TABELLA sui dati estratti
-# Gestione diretta della TABELLA sui dati estratti
-    if "tabella" in testo_lower or (match_top_tabella and "grafico" not in testo_lower and "diagramma" not in testo_lower):
+    # Gestione diretta della TABELLA sui dati estratti (solo richieste positive)
+    ha_negazione = any(nega in testo_lower for nega in [
+        "non voglio",
+        "non ho chiesto",
+        "senza tabella",
+        "no tabella"
+    ])
+
+    chiede_tabella_esplicita = (
+        ("tabella" in testo_lower)
+        and any(verb in testo_lower for verb in [
+            "mostra", "fammi", "genera", "crea", "visualizza", "vedere"
+        ])
+        and not ha_negazione
+    )
+
+    chiede_solo_top = (
+        match_top_tabella
+        and "grafico" not in testo_lower
+        and "diagramma" not in testo_lower
+        and not ha_negazione
+    )
+
+    if chiede_tabella_esplicita or chiede_solo_top:
         esito_tabella = mostra_tabella_dati.invoke({"richiesta_utente": user_query})
 
         if esito_tabella.startswith("SUCCESSO_TABELLA::"):
@@ -1227,6 +1404,14 @@ REGOLE GLOBALI:
                     "azioni": []
                 }
 
+            if errore_servizio_google(e):
+                print(f"[LLM] Servizio LLM temporaneamente non disponibile: {e}")
+                return {
+                    "testo": "Il modello di Google è temporaneamente non disponibile (errore 503). "
+                            "Di solito è un problema di sovraccarico: riprova tra qualche minuto.",
+                    "azioni": []
+                }
+
             return {
                 "testo": f"Si è verificato un errore nel motore: {e}",
                 "azioni": []
@@ -1255,6 +1440,15 @@ REGOLE GLOBALI:
                 nome_tool = tool.get("name")
                 if nome_tool and nome_tool not in tool_usati:
                     tool_usati.append(nome_tool)
+
+    modelli_estratti = re.findall(r"Modello\s+([A-Za-z0-9\-]+)", risposta_grezza, flags=re.IGNORECASE)
+    if modelli_estratti:
+        modelli_unici = []
+        for m in modelli_estratti:
+            m_pulito = m.strip().upper()
+            if m_pulito not in modelli_unici:
+                modelli_unici.append(m_pulito)
+        stato_conversazione[chat_id]["ultimi_modelli_trovati"] = modelli_unici
 
     if istruzione_interna_tool:
         risultato_tool_successivo = esegui_istruzione_interna_tool(istruzione_interna_tool)
@@ -1294,7 +1488,11 @@ REGOLE GLOBALI:
     {risposta_grezza}
     """
 
-    if any(t in ["estrai_dati_dinamici", "genera_grafico_avanzato", "mostra_tabella_dati"] for t in tool_usati):
+    if "genera_grafico_avanzato" in tool_usati:
+        risposta_assistente = "Ho generato il grafico in base alla tua richiesta."
+    elif "mostra_tabella_dati" in tool_usati:
+        risposta_assistente = "Ho generato la tabella con i dati richiesti."
+    elif "estrai_dati_dinamici" in tool_usati:
         risposta_assistente = pulisci_risposta_tool_per_utente(risposta_grezza)
     else:
         try:
@@ -1379,6 +1577,13 @@ try:
             .str.strip()
         )
 
+        # deduplica per modello
+        col_modello_src = next((c for c in df_catalogo.columns if "modello" in c.lower()), None)
+        if col_modello_src:
+            df_catalogo = df_catalogo.drop_duplicates(subset=[col_modello_src]).reset_index(drop=True)
+        else:
+            df_catalogo = df_catalogo.drop_duplicates().reset_index(drop=True)
+
         colonne_catalogo = []
         for col in df_catalogo.columns:
             colonna_stringa = str(col).strip().lower()
@@ -1387,6 +1592,14 @@ try:
 
         print(f"[CATALOGO] File caricato: {CATALOGO_PATH}")
         print(f"[CATALOGO] Righe: {len(df_catalogo)} | Colonne: {len(colonne_catalogo)}")
+
+        for col in colonne_catalogo:
+            try:
+                serie_num = converti_serie_numerica(df_catalogo[col])
+                if serie_num.notna().sum() > 0:
+                    max_valori_colonne[col] = float(serie_num.max())
+            except Exception:
+                continue
 
 except Exception as e:
     print(f"Errore caricamento catalogo da '{CATALOGO_PATH}': {e}")
@@ -1410,6 +1623,7 @@ def costruisci_motore_llm():
     llm_locale = crea_llm_con_chiave(ottieni_api_key_corrente())
     llm_con_tools_locale = llm_locale.bind_tools(tools)
     tool_node_locale = ToolNode(tools)
+
     workflow_locale = StateGraph(AgentState)
     workflow_locale.add_node("agent", call_model)
     workflow_locale.add_node("tools", tool_node_locale)
